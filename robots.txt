@@ -1,0 +1,87 @@
+import React from "react";
+import { Link } from "wouter";
+import logoPath from "@assets/bestlogo_1782311057091.png";
+
+export default function Terms() {
+  return (
+    <div className="bg-[#050812] text-white min-h-screen">
+      <div className="container mx-auto px-4 py-20 max-w-3xl">
+        <Link href="/">
+          <img src={logoPath} alt="BurnCall" className="h-7 mb-10" />
+        </Link>
+        <h1 className="text-3xl font-bold mb-2">Terms of Service</h1>
+        <p className="text-slate-400 text-sm mb-10">Last updated: June 1, 2025</p>
+
+        <div className="space-y-8">
+          {[
+            {
+              heading: "1. Acceptance of Terms",
+              body: `By accessing or using BurnCall ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you are using BurnCall on behalf of a business or organization, you represent that you have authority to bind that entity to these Terms. If you do not agree, do not use the Service.`,
+            },
+            {
+              heading: "2. Description of Service",
+              body: `BurnCall is a SaaS platform that provides AI-powered lead response, qualification, follow-up automation, and appointment booking for home service businesses. The Service includes web dashboard access, SMS and email automation capabilities, integrations with third-party calendars and CRM systems, and related features as described on our website.`,
+            },
+            {
+              heading: "3. Account Registration",
+              body: `You must provide accurate and complete information when creating an account. You are responsible for maintaining the security of your credentials and for all activities that occur under your account. You must notify us immediately at support@burncall.co if you suspect unauthorized access to your account.`,
+            },
+            {
+              heading: "4. Subscription and Payment",
+              body: `BurnCall operates on a subscription basis. By subscribing, you authorize us to charge your payment method on a recurring basis (monthly or annually, as selected). All fees are non-refundable except as expressly stated in these Terms or required by law. We reserve the right to change pricing with 30 days' notice. Your continued use of the Service after a price change constitutes acceptance of the new price.`,
+            },
+            {
+              heading: "5. Free Trial",
+              body: `We may offer a free trial period. At the end of the trial, your account will automatically convert to a paid subscription unless you cancel before the trial ends. No credit card is required to start a trial. We reserve the right to modify or cancel free trial offers at any time.`,
+            },
+            {
+              heading: "6. Acceptable Use",
+              body: `You agree not to use BurnCall to send spam, illegal messages, or to contact individuals who have opted out of communications. You are responsible for ensuring your use of SMS and email features complies with all applicable laws, including the CAN-SPAM Act, TCPA, and applicable state telemarketing laws. You may not resell or white-label the Service without written permission. You may not reverse engineer, decompile, or attempt to extract the source code of the Service.`,
+            },
+            {
+              heading: "7. AI and Automated Communications",
+              body: `BurnCall's AI responds to leads on your behalf. You acknowledge that AI-generated responses may not be perfect and accept responsibility for reviewing and configuring the AI's behavior. You represent that you have proper consent from your customers to receive automated text messages and emails. BurnCall is not liable for non-compliance with telecommunications laws resulting from your configuration or use of automated messaging features.`,
+            },
+            {
+              heading: "8. Data and Privacy",
+              body: `Your use of BurnCall is also governed by our Privacy Policy, incorporated herein by reference. You retain ownership of your data. By using the Service, you grant BurnCall a limited license to process your data solely for the purpose of providing the Service. We do not sell your data or your customers' contact information.`,
+            },
+            {
+              heading: "9. Intellectual Property",
+              body: `BurnCall and its licensors own all right, title, and interest in the Service, including all intellectual property rights. These Terms do not grant you any right to use BurnCall's trademarks, logos, or brand elements without our prior written consent.`,
+            },
+            {
+              heading: "10. Service Availability and SLA",
+              body: `We target 99.9% uptime for the core platform. Scheduled maintenance will be communicated at least 24 hours in advance when possible. We are not liable for downtime caused by third-party services, force majeure events, or circumstances beyond our reasonable control. In the event of extended outages, we may issue service credits at our discretion.`,
+            },
+            {
+              heading: "11. Limitation of Liability",
+              body: `To the maximum extent permitted by law, BurnCall's total liability to you for any claims arising from these Terms or the Service shall not exceed the amounts you paid to BurnCall in the 12 months prior to the claim. BurnCall is not liable for any indirect, incidental, special, consequential, or punitive damages, including lost revenue, lost profits, or lost business opportunities.`,
+            },
+            {
+              heading: "12. Termination",
+              body: `Either party may terminate this agreement at any time. Upon termination, your right to use the Service immediately ends. We will retain your data for 90 days before permanent deletion. We may immediately suspend or terminate your account for violation of these Terms without notice or refund.`,
+            },
+            {
+              heading: "13. Governing Law",
+              body: `These Terms are governed by the laws of the State of Florida, without regard to conflict of law principles. Any disputes shall be resolved through binding arbitration in Orange County, Florida, except that either party may seek injunctive relief in a court of competent jurisdiction.`,
+            },
+            {
+              heading: "14. Changes to Terms",
+              body: `We may modify these Terms at any time. We will notify you of material changes via email or in-app notification at least 14 days before they take effect. Your continued use of the Service after the effective date constitutes acceptance.`,
+            },
+            {
+              heading: "15. Contact",
+              body: `Questions about these Terms? Contact us at legal@burncall.co or write to: BurnCall Inc., 123 Innovation Drive, Suite 400, Orlando, FL 32801.`,
+            },
+          ].map(section => (
+            <div key={section.heading}>
+              <h2 className="text-lg font-bold text-white mb-2">{section.heading}</h2>
+              <p className="text-slate-400 leading-relaxed">{section.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

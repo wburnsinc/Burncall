@@ -1,0 +1,285 @@
+import React from "react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, Shield, ArrowRight } from "lucide-react";
+
+const industries = ["HVAC", "Plumbing", "Electrical", "Roofing", "Landscaping", "Cleaning", "Pest Control", "Garage Door", "Restoration", "Other local service businesses"];
+
+const problemCards = [
+  { title: "Missed Calls", desc: "Customers call when they need help. If nobody responds quickly, the opportunity can disappear." },
+  { title: "Slow Lead Response", desc: "New website and social-media leads can go cold while teams are busy serving existing customers." },
+  { title: "Unqualified Requests", desc: "Businesses waste time on jobs outside their service area, unavailable services, or poor-fit requests." },
+  { title: "Forgotten Follow-Up", desc: "Estimates and conversations often need more than one touch before a customer books." },
+];
+
+const featureCards = [
+  { title: "AI Lead Response", desc: "Respond to website leads and customer messages quickly with business-approved information." },
+  { title: "Missed-Call Recovery", desc: "Automatically follow up after missed calls so customers have a clear next step." },
+  { title: "Service-Area Qualification", desc: "Check ZIP codes and service radius before offering booking options." },
+  { title: "Smart Estimate", desc: "Guide customers to the right service category and show approved diagnostic fees or price ranges when allowed." },
+  { title: "Booking Workflow", desc: "Move qualified customers toward an appointment without promising unavailable times or services." },
+  { title: "Opportunity Dashboard", desc: "See missed calls, new leads, stale estimates, follow-up tasks, and booking opportunities in one place." },
+];
+
+const howItWorks = [
+  { step: "01", title: "Capture the inquiry", desc: "BurnCall receives website forms, messages, missed calls, and other lead sources." },
+  { step: "02", title: "Qualify the request", desc: "It collects the details needed, including service type, ZIP code, urgency, and preferred contact method." },
+  { step: "03", title: "Check business rules", desc: "BurnCall checks service area, business hours, booking rules, and approved business information." },
+  { step: "04", title: "Respond or route", desc: "It sends a safe response, offers the next step, or routes the request to a team member for review." },
+  { step: "05", title: "Track the outcome", desc: "The business can see whether the lead booked, needs follow-up, or requires attention." },
+];
+
+const trustPoints = [
+  "Does not invent prices, discounts, warranties, or arrival times",
+  "Checks service area before offering booking",
+  "Uses approved business knowledge for customer-facing answers",
+  "Can require human approval before messages are sent",
+  "Keeps each business's data separate",
+  "Allows businesses to turn automation on or off by workflow",
+];
+
+const outcomes = [
+  "Faster first response",
+  "Fewer missed-call opportunities",
+  "More organized lead follow-up",
+  "Better service-area screening",
+  "Clearer booking workflow",
+  "More visibility into revenue opportunities",
+];
+
+const businessModelCards = [
+  { title: "Subscription Software", desc: "Monthly plans based on features, users, automation volume, and business size." },
+  { title: "Usage Expansion", desc: "Additional value from AI workflows, messaging volume, advanced reporting, and premium automation." },
+  { title: "Industry Expansion", desc: "Start with home services and expand into other appointment-driven local businesses." },
+  { title: "Workflow Depth", desc: "Grow from lead response into qualification, estimates, booking, follow-up, analytics, and multi-location operations." },
+];
+
+export default function About() {
+  return (
+    <div className="bg-[#050812] text-white min-h-screen">
+      {/* Hero */}
+      <section className="pt-20 pb-24 px-4">
+        <div className="container mx-auto max-w-4xl text-center">
+          <Badge className="mb-5 bg-orange-500/20 text-orange-400 border-orange-500/30">Built for home-service businesses</Badge>
+          <h1 className="text-4xl md:text-6xl font-bold mb-5 leading-tight">
+            Turn missed calls into<br className="hidden md:block" /> booked jobs.
+          </h1>
+          <p className="text-slate-400 text-lg max-w-2xl mx-auto mb-8 leading-relaxed">
+            BurnCall helps service businesses respond to new leads, recover missed calls, qualify customer requests, follow up automatically, and move more work onto the calendar.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/signup">
+              <Button className="bg-[#FF6B2B] hover:bg-[#FF6B2B]/90 text-white h-12 px-8">Start Free Trial</Button>
+            </Link>
+            <Link href="/how-it-works">
+              <Button variant="outline" className="border-white/20 text-white hover:bg-white/5 h-12 px-8">See How It Works</Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Dashboard preview */}
+      <section className="px-4 pb-20">
+        <div className="container mx-auto max-w-5xl">
+          <div className="bg-[#0A0F1E] border border-white/10 rounded-2xl p-6 md:p-8">
+            <div className="grid md:grid-cols-4 gap-4 mb-6">
+              {[
+                { label: "Leads This Month", value: "56", color: "text-white" },
+                { label: "Avg Response Time", value: "14s", color: "text-[#FF6B2B]" },
+                { label: "Appointments Booked", value: "21", color: "text-blue-400" },
+                { label: "Revenue Rescued", value: "$18,640", color: "text-green-400" },
+              ].map(m => (
+                <div key={m.label} className="bg-white/5 rounded-xl p-4 text-center border border-white/10">
+                  <p className={`text-2xl font-bold ${m.color}`}>{m.value}</p>
+                  <p className="text-slate-500 text-xs mt-1">{m.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="bg-[#050812] rounded-xl p-4 border border-white/5">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Live AI Activity</p>
+              <div className="space-y-2">
+                {[
+                  { time: "2 min ago", event: "Texted Emily R. after missed call", tag: "SMS Sent", tagColor: "text-blue-400 bg-blue-500/10" },
+                  { time: "5 min ago", event: "Qualified James T. for AC Installation", tag: "Lead Qual", tagColor: "text-orange-400 bg-orange-500/10" },
+                  { time: "12 min ago", event: "Booked Sarah M. for Tomorrow 2PM", tag: "Booked", tagColor: "text-green-400 bg-green-500/10" },
+                ].map((a, i) => (
+                  <div key={i} className="flex items-center gap-3 text-sm">
+                    <span className="text-slate-600 text-xs w-16 shrink-0">{a.time}</span>
+                    <span className="text-slate-300 flex-1">{a.event}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${a.tagColor}`}>{a.tag}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Problem section */}
+      <section className="py-20 px-4 bg-[#0A0F1E] border-y border-white/10">
+        <div className="container mx-auto max-w-5xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-3">Great businesses lose jobs when leads go unanswered.</h2>
+            <p className="text-slate-400 max-w-2xl mx-auto">Homeowners often contact multiple service companies at once. When a call is missed, a form sits unanswered, or an estimate is never followed up on, the customer usually chooses another business.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {problemCards.map((card) => (
+              <div key={card.title} className="bg-[#050812] border border-white/10 rounded-2xl p-5">
+                <h3 className="text-white font-semibold mb-2">{card.title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">{card.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Solution section */}
+      <section className="py-20 px-4">
+        <div className="container mx-auto max-w-5xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-3">One system for every customer inquiry.</h2>
+            <p className="text-slate-400 max-w-2xl mx-auto">BurnCall gives home-service businesses a clear workflow from first contact to booked job.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {featureCards.map((card) => (
+              <div key={card.title} className="bg-[#0A0F1E] border border-white/10 rounded-2xl p-5 hover:border-[#FF6B2B]/30 transition-colors">
+                <h3 className="text-white font-semibold mb-2">{card.title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">{card.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="py-20 px-4 bg-[#0A0F1E] border-y border-white/10">
+        <div className="container mx-auto max-w-4xl">
+          <h2 className="text-3xl font-bold text-center mb-12">How BurnCall works</h2>
+          <div className="space-y-4">
+            {howItWorks.map((step, i) => (
+              <div key={i} className="flex gap-5 bg-[#050812] border border-white/10 rounded-2xl p-5">
+                <div className="text-4xl font-black text-white/5 leading-none shrink-0 w-12">{step.step}</div>
+                <div>
+                  <h3 className="text-white font-semibold mb-1">{step.title}</h3>
+                  <p className="text-slate-400 text-sm">{step.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* AI safety */}
+      <section className="py-20 px-4">
+        <div className="container mx-auto max-w-5xl">
+          <div className="grid md:grid-cols-2 gap-10 items-center">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Shield className="h-5 w-5 text-[#FF6B2B]" />
+                <h2 className="text-2xl font-bold">AI that works within business rules.</h2>
+              </div>
+              <p className="text-slate-400 mb-6 leading-relaxed">BurnCall is designed to help businesses respond faster without letting AI make risky promises. The system uses approved business information, service-area rules, booking checks, pricing guardrails, and human approval workflows.</p>
+              <ul className="space-y-3">
+                {trustPoints.map(p => (
+                  <li key={p} className="flex items-start gap-2.5 text-sm text-slate-300">
+                    <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
+                    {p}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-slate-500 text-xs mt-5 bg-white/5 rounded-lg p-3 border border-white/10">BurnCall supports the team. It does not replace business judgment.</p>
+            </div>
+            <div className="bg-[#0A0F1E] border border-white/10 rounded-2xl p-6">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-4">AI Safety Guardrails Active</p>
+              <div className="space-y-3">
+                {[
+                  { label: "Service area check", status: "Active" },
+                  { label: "Pricing guardrails", status: "Active" },
+                  { label: "Human review mode", status: "Configurable" },
+                  { label: "Data isolation", status: "Active" },
+                  { label: "Automation controls", status: "Per-workflow" },
+                ].map(g => (
+                  <div key={g.label} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                    <span className="text-slate-300 text-sm">{g.label}</span>
+                    <Badge className={`text-xs border ${g.status === "Active" ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-white/10 text-slate-400 border-white/10"}`}>{g.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Who it's for */}
+      <section className="py-20 px-4 bg-[#0A0F1E] border-y border-white/10">
+        <div className="container mx-auto max-w-4xl text-center">
+          <h2 className="text-3xl font-bold mb-3">Built for teams that serve customers in the field.</h2>
+          <p className="text-slate-400 mb-8 max-w-xl mx-auto">BurnCall is especially useful for businesses where fast response, service-area coverage, and appointment scheduling directly affect revenue.</p>
+          <div className="flex flex-wrap gap-3 justify-center">
+            {industries.map(ind => (
+              <span key={ind} className="px-4 py-2 bg-[#050812] border border-white/10 rounded-full text-sm text-slate-300 hover:border-[#FF6B2B]/40 transition-colors">{ind}</span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Business value */}
+      <section className="py-20 px-4">
+        <div className="container mx-auto max-w-4xl">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-bold mb-3">What BurnCall helps businesses improve</h2>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {outcomes.map(o => (
+              <div key={o} className="flex items-center gap-3 bg-[#0A0F1E] border border-white/10 rounded-xl p-4">
+                <ArrowRight className="h-4 w-4 text-[#FF6B2B] shrink-0" />
+                <span className="text-slate-300 text-sm">{o}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-slate-600 text-xs text-center">Results vary by business, lead volume, service category, response practices, and local market conditions.</p>
+        </div>
+      </section>
+
+      {/* Investors */}
+      <section className="py-20 px-4 bg-[#0A0F1E] border-y border-white/10">
+        <div className="container mx-auto max-w-5xl">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl font-bold mb-3">A software layer between first inquiry and booked work.</h2>
+            <p className="text-slate-400 max-w-2xl mx-auto">BurnCall is built around a recurring problem in local services: customer demand arrives through calls, forms, messages, and referrals, but many businesses lack a consistent system for responding, qualifying, following up, and booking.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+            {businessModelCards.map(c => (
+              <div key={c.title} className="bg-[#050812] border border-white/10 rounded-2xl p-5">
+                <h3 className="text-white font-semibold mb-2 text-sm">{c.title}</h3>
+                <p className="text-slate-400 text-xs leading-relaxed">{c.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="text-center">
+            <Button variant="outline" className="border-white/20 text-white hover:bg-white/5 h-11 px-8">
+              Contact BurnCall
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="py-20 px-4">
+        <div className="container mx-auto max-w-3xl text-center">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">Every customer inquiry deserves a next step.</h2>
+          <p className="text-slate-400 mb-8">BurnCall helps home-service businesses respond faster, stay organized, and turn more opportunities into booked work.</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/signup">
+              <Button className="bg-[#FF6B2B] hover:bg-[#FF6B2B]/90 text-white h-12 px-8">Start Free Trial</Button>
+            </Link>
+            <Link href="/demo">
+              <Button variant="outline" className="border-white/20 text-white hover:bg-white/5 h-12 px-8">Request a Demo</Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

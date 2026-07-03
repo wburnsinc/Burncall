@@ -1,0 +1,227 @@
+import React, { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, XCircle, ExternalLink, Trash2, Plus } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
+
+interface Webhook {
+  id: number;
+  url: string;
+  events: string[];
+  secret: string;
+  enabled: boolean;
+  lastDeliveryAt: string | null;
+  lastStatus: string | null;
+}
+
+interface IntegrationStatus {
+  id: string;
+  name: string;
+  connected: boolean;
+  required: boolean;
+}
+
+const PLANNED = [
+  { name: "Google Calendar", desc: "Two-way appointment sync" },
+  { name: "Calendly", desc: "Let leads self-schedule" },
+  { name: "HubSpot", desc: "Sync leads/contacts to CRM" },
+  { name: "Jobber", desc: "Push booked jobs to dispatch" },
+  { name: "ServiceTitan", desc: "Full job management sync" },
+  { name: "Housecall Pro", desc: "Scheduling & dispatch sync" },
+  { name: "Zapier", desc: "Connect to 6,000+ apps" },
+];
+
+export default function Integrations() {
+  const [status, setStatus] = useState<IntegrationStatus[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [calendarLink, setCalendarLink] = useState("");
+  const [savingLink, setSavingLink] = useState(false);
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [availableEvents, setAvailableEvents] = useState<string[]>([]);
+  const [showAddWebhook, setShowAddWebhook] = useState(false);
+  const [newUrl, setNewUrl] = useState("");
+  const [newEvents, setNewEvents] = useState<string[]>([]);
+  const [creatingHook, setCreatingHook] = useState(false);
+
+  async function loadWebhooks() {
+    const data = await api.get<{ webhooks: Webhook[]; availableEvents: string[] }>("/api/webhooks");
+    setWebhooks(data.webhooks);
+    setAvailableEvents(data.availableEvents);
+  }
+
+  useEffect(() => {
+    Promise.all([
+      api.get<{ integrations: IntegrationStatus[] }>("/api/integrations/status"),
+      api.get<{ calendarLink: string | null }>("/api/business"),
+      loadWebhooks(),
+    ])
+      .then(([s, biz]) => {
+        setStatus(s.integrations);
+        setCalendarLink(biz.calendarLink || "");
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load integration status"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const createWebhook = async () => {
+    if (!newUrl || newEvents.length === 0) return;
+    setCreatingHook(true);
+    try {
+      await api.post("/api/webhooks", { url: newUrl, events: newEvents });
+      setNewUrl("");
+      setNewEvents([]);
+      setShowAddWebhook(false);
+      await loadWebhooks();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to create webhook");
+    } finally {
+      setCreatingHook(false);
+    }
+  };
+
+  const toggleWebhook = async (id: number, enabled: boolean) => {
+    try {
+      await api.patch(`/api/webhooks/${id}`, { enabled: !enabled });
+      await loadWebhooks();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to update webhook");
+    }
+  };
+
+  const deleteWebhook = async (id: number) => {
+    try {
+      await api.delete(`/api/webhooks/${id}`);
+      await loadWebhooks();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete webhook");
+    }
+  };
+
+  const saveCalendarLink = async () => {
+    setSavingLink(true);
+    try {
+      await api.patch("/api/business", { calendarLink });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to save calendar link");
+    } finally {
+      setSavingLink(false);
+    }
+  };
+
+  if (loading) return <div className="text-slate-400 text-sm p-6">Checking integration status…</div>;
+  if (!status) return <div className="text-red-400 text-sm p-6">Couldn't load integrations: {error}</div>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Integrations</h1>
+          <p className="text-slate-400 text-sm mt-0.5">{status.filter((i) => i.connected).length} of {status.length} configured</p>
+        </div>
+      </div>
+
+      <div className="bg-[#0A0F1E] border border-white/10 rounded-2xl p-5 mb-8">
+        <p className="text-sm text-slate-300">
+          These reflect real environment variables read by the backend — not a mock toggle. To connect one, add its API key
+          to your deployment's environment variables (see <code className="text-orange-400">DEPLOY.md</code> / <code className="text-orange-400">.env.example</code>) and redeploy; it will flip to Connected automatically.
+        </p>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+        {status.map((intg) => (
+          <div key={intg.id} className={`bg-[#0A0F1E] border rounded-2xl p-5 flex flex-col gap-3 ${intg.connected ? "border-green-500/20" : "border-white/5"}`} data-testid={`integration-${intg.id}`}>
+            <div className="flex items-start justify-between">
+              <p className="text-white font-semibold text-sm">{intg.name}</p>
+              {intg.connected ? <CheckCircle2 className="h-5 w-5 text-green-400 shrink-0" /> : <XCircle className="h-5 w-5 text-slate-600 shrink-0" />}
+            </div>
+            <Badge className={`text-xs w-fit border ${intg.connected ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-white/5 text-slate-500 border-white/10"}`}>
+              {intg.connected ? "Connected" : intg.required ? "Required — not configured" : "Not configured"}
+            </Badge>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-[#0A0F1E] border border-white/10 rounded-2xl p-6 mb-8">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-white font-semibold">Webhooks</p>
+          <Button size="sm" className="bg-[#FF6B2B] hover:bg-[#FF6B2B]/90 text-white text-xs h-8" onClick={() => setShowAddWebhook((s) => !s)} data-testid="add-webhook">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Webhook
+          </Button>
+        </div>
+        <p className="text-slate-400 text-xs mb-4">
+          Real outbound event delivery — this is how you connect BurnCall to Zapier ("Webhooks by Zapier" trigger), your CRM's inbound webhook, or any custom tool. Each delivery is signed with HMAC-SHA256 in the <code className="text-orange-400">X-BurnCall-Signature</code> header using the webhook's own secret.
+        </p>
+
+        {showAddWebhook && (
+          <div className="bg-white/[0.02] border border-white/10 rounded-xl p-4 mb-4 space-y-3">
+            <Input placeholder="https://hooks.zapier.com/hooks/catch/..." value={newUrl} onChange={(e) => setNewUrl(e.target.value)} className="bg-white/5 border-white/10 text-white text-sm" />
+            <div className="flex flex-wrap gap-2">
+              {availableEvents.map((evt) => (
+                <button
+                  key={evt}
+                  onClick={() => setNewEvents((evts) => (evts.includes(evt) ? evts.filter((e) => e !== evt) : [...evts, evt]))}
+                  className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${newEvents.includes(evt) ? "bg-[#FF6B2B] text-white border-[#FF6B2B]" : "bg-white/5 text-slate-400 border-white/10"}`}
+                >
+                  {evt}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" className="bg-[#FF6B2B] hover:bg-[#FF6B2B]/90 text-white text-xs h-8" disabled={creatingHook || !newUrl || newEvents.length === 0} onClick={createWebhook}>{creatingHook ? "Creating…" : "Create"}</Button>
+              <Button size="sm" variant="outline" className="border-white/20 text-white text-xs h-8" onClick={() => setShowAddWebhook(false)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+
+        {webhooks.length === 0 && !showAddWebhook && <p className="text-slate-600 text-sm py-3">No webhooks configured yet.</p>}
+
+        <div className="space-y-2">
+          {webhooks.map((hook) => (
+            <div key={hook.id} className="flex items-center gap-3 p-3 bg-white/[0.02] border border-white/10 rounded-xl">
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm truncate">{hook.url}</p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {hook.events.map((e) => <span key={e} className="text-[10px] bg-white/5 text-slate-400 px-1.5 py-0.5 rounded">{e}</span>)}
+                </div>
+                {hook.lastDeliveryAt && (
+                  <p className={`text-xs mt-1 ${hook.lastStatus === "ok" ? "text-green-400" : "text-red-400"}`}>
+                    Last delivery: {new Date(hook.lastDeliveryAt).toLocaleString()} — {hook.lastStatus}
+                  </p>
+                )}
+              </div>
+              <button onClick={() => toggleWebhook(hook.id, hook.enabled)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 ${hook.enabled ? "bg-[#FF6B2B]" : "bg-white/20"}`}>
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${hook.enabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+              </button>
+              <button onClick={() => deleteWebhook(hook.id)} className="text-slate-600 hover:text-red-400 shrink-0"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-[#0A0F1E] border border-white/10 rounded-2xl p-6 mb-8">
+        <p className="text-white font-semibold mb-1">Calendar Link</p>
+        <p className="text-slate-400 text-xs mb-4">A simple booking link the AI can share with leads (e.g. your Google Calendar appointment page or Calendly link). Not a live two-way sync — just a shared URL.</p>
+        <div className="flex gap-2">
+          <Input value={calendarLink} onChange={(e) => setCalendarLink(e.target.value)} placeholder="https://calendly.com/your-business" className="bg-white/5 border-white/10 text-white text-sm" />
+          <Button size="sm" className="bg-[#FF6B2B] hover:bg-[#FF6B2B]/90 text-white shrink-0" disabled={savingLink} onClick={saveCalendarLink}>{savingLink ? "Saving…" : "Save"}</Button>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-white font-semibold mb-1">Planned Integrations</p>
+        <p className="text-slate-400 text-xs mb-4">No native/OAuth connection built yet for these — but the Webhooks section above can often reach them today: HubSpot, Jobber, and most CRMs accept inbound webhooks directly, and Zapier's "Webhooks by Zapier" trigger can catch a BurnCall event and fan it out to 6,000+ apps, including Google Calendar, Gmail, and Outlook.</p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {PLANNED.map((p) => (
+            <div key={p.name} className="bg-white/[0.02] border border-dashed border-white/10 rounded-2xl p-5 opacity-60">
+              <p className="text-slate-300 font-medium text-sm mb-1">{p.name}</p>
+              <p className="text-slate-500 text-xs">{p.desc}</p>
+              <Badge className="text-xs mt-3 bg-white/5 text-slate-500 border-white/10">Coming soon</Badge>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
