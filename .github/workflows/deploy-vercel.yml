@@ -21,59 +21,38 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-      
-      - name: Setup pnpm
-  uses: pnpm/action-setup@v4
-  with:
-    version: 9
 
-- name: Install dependencies
-  run: pnpm install --no-frozen-lockfile
-      
-      # Run linting
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
       - name: Run linting
-        run: npm run lint --if-present
-      
-      # Run tests
+        run: pnpm run lint --if-present
+
       - name: Run tests
-        run: npm run test --if-present
-      
-      # Build project
+        run: pnpm run test --if-present
+
       - name: Build project
-        run: npm run build
-      
-      # Deploy to Vercel (Preview)
+        run: pnpm run build
+
       - name: Deploy to Vercel (Preview)
         if: github.event_name == 'pull_request'
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./
-      
-      # Deploy to Vercel (Production)
+          vercel-args: '--prod'
+
       - name: Deploy to Vercel (Production)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main'
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./
           vercel-args: '--prod'
-      
-      # Comment on PR with deployment URL
-      - name: Comment PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🚀 Vercel deployment preview ready!\n\nCheck your deployment at the preview URL.'
-            })
