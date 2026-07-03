@@ -1,14 +1,13 @@
-name: Deploy BurnCall to Vercel
+name: Build and Deploy
 
 on:
   push:
     branches:
       - main
       - feature/copilot-plans
-
-pull_request:
-  branches:
-    - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   build-and-deploy:
@@ -16,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -27,15 +26,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: pnpm
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
       - name: Build project
-        run: pnpm run build --if-present
+        run: pnpm run build
 
-      - name: Deploy to Vercel (Preview)
+      - name: Deploy to Vercel Preview
         if: github.event_name == 'pull_request'
         uses: amondnet/vercel-action@v25
         with:
@@ -44,7 +43,7 @@ jobs:
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
 
-      - name: Deploy to Vercel (Production)
+      - name: Deploy to Vercel Production
         if: github.ref == 'refs/heads/main'
         uses: amondnet/vercel-action@v25
         with:
