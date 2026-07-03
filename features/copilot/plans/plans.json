@@ -1,0 +1,94 @@
+{
+  "templates": [
+    {
+      "id": "quick-burn-plan",
+      "name": "Quick Burn Plan",
+      "description": "Fast execution plan for urgent scheduling",
+      "duration": 30,
+      "tasks": [
+        {
+          "id": 1,
+          "title": "Assess Requirements",
+          "duration": 5,
+          "priority": "high"
+        },
+        {
+          "id": 2,
+          "title": "Execute Plan",
+          "duration": 20,
+          "priority": "high"
+        },
+        {
+          "id": 3,
+          "title": "Review & Optimize",
+          "duration": 5,
+          "priority": "medium"
+        }
+      ]
+    },
+    {
+      "id": "detailed-burn-plan",
+      "name": "Detailed Burn Plan",
+      "description": "Comprehensive planning with detailed steps",
+      "duration": 120,
+      "tasks": [
+        {
+          "id": 1,
+          "title": "Analysis Phase",
+          "duration": 30,
+          "priority": "high"
+        },
+        {
+          "id": 2,
+          "title": "Planning Phase",
+          "duration": 40,
+          "priority": "high"
+        },
+        {
+          "id": 3,
+          "title": "Execution Phase",
+          "duration": 40,
+          "priority": "high"
+        },
+        {
+          "id": 4,
+          "title": "Review Phase",
+          "duration": 10,
+          "priority": "medium"
+        }
+      ]
+    },
+    {
+      "id": "strategic-burn-plan",
+      "name": "Strategic Burn Plan",
+      "description": "Long-term strategic planning and optimization",
+      "duration": 240,
+      "tasks": [
+        {
+          "id": 1,
+          "title": "Strategy Definition",
+          "duration": 60,
+          "priority": "high"
+        },
+        {
+          "id": 2,
+          "title": "Resource Allocation",
+          "duration": 40,
+          "priority": "high"
+        },
+        {
+          "id": 3,
+          "title": "Implementation",
+          "duration": 100,
+          "priority": "high"
+        },
+        {
+          "id": 4,
+          "title": "Monitoring & Adjustment",
+          "duration": 40,
+          "priority": "medium"
+        }
+      ]
+    }
+  ]
+}

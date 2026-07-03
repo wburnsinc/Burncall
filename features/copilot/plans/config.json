@@ -1,0 +1,25 @@
+{
+  "feature": "copilot-plans",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "AI-powered planning and scheduling for BurnCall",
+  "settings": {
+    "maxPlansPerUser": 50,
+    "enableAIGeneration": true,
+    "enableTemplates": true,
+    "cachePlans": true,
+    "cacheDuration": 3600
+  },
+  "api": {
+    "baseUrl": "/api/copilot/plans",
+    "timeout": 30000,
+    "retries": 3
+  },
+  "features": [
+    "plan-creation",
+    "plan-templates",
+    "ai-suggestions",
+    "scheduling-integration",
+    "analytics"
+  ]
+}
