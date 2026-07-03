@@ -1,0 +1,91 @@
+I need a complete, portable handover package for this entire Replit website so it can be independently relaunched on another account, host, or program with no missing functionality.
+
+Do not make changes to the current live app. First, inspect the project and prepare the following complete handover package.
+
+## 1. Full source code
+
+Provide a complete export of the project, including:
+
+* All frontend code, backend code, API routes, server files, scripts, workflows, configuration files, and build files
+* All pages, components, styles, images, fonts, icons, public assets, uploads, and downloadable files that are stored in the project
+* Dependency files and exact versions, including package.json, lock files, requirements files, Docker files, and any runtime configuration
+* Database schema, ORM schema, migration files, seed files, and scripts
+* Scheduled jobs, background tasks, webhooks, email logic, payment logic, authentication logic, and third-party integrations
+* README documentation with exact instructions to install, configure, run, build, test, deploy, back up, and restore the app
+
+Create a clean downloadable ZIP archive of the entire project root. Do not omit hidden configuration files that are needed to run the app, except secret values.
+
+## 2. Complete data export
+
+Identify every location where the app stores data, including:
+
+* Replit database / PostgreSQL database
+* Files or uploaded media
+* Object storage
+* User accounts
+* Content, pages, posts, products, orders, bookings, form submissions, messages, customer records, settings, and logs needed for operation
+* Any external database, spreadsheet, CMS, API, or third-party service
+
+For each data source, provide:
+
+1. The service name and purpose
+2. The export method
+3. A complete export file where possible
+4. The database schema and restore instructions
+5. A verification checklist showing how to confirm the import worked
+6. A list of anything that cannot be exported and the exact steps needed to recreate or transfer it
+
+Do not delete, overwrite, or modify existing data.
+
+## 3. Environment variables, secrets, and integrations
+
+Create a file named `.env.example` containing every required environment-variable name, with safe placeholder values only.
+
+Also create `INTEGRATIONS_AND_SECRETS.md` that lists:
+
+* Every external service, API, domain, email provider, payment provider, analytics service, storage service, authentication provider, and webhook
+* Why it is used
+* Which environment variables or credentials it requires
+* Where those credentials must be obtained
+* How to replace, rotate, or reconnect each credential after migration
+* Any subscription, license, billing account, or account ownership dependency
+
+Do not place real passwords, API keys, tokens, private keys, or live credentials into the ZIP, source code, documentation, or chat.
+
+## 4. Relaunch instructions
+
+Create a `RELAUNCH_GUIDE.md` that explains, step by step:
+
+1. How to import the source code into a new Replit account or another host
+2. How to install dependencies
+3. How to create the database and apply migrations
+4. How to import all exported data
+5. How to configure every environment variable
+6. How to restore uploaded files and media
+7. How to run the application locally or in preview
+8. How to deploy it
+9. How to connect a custom domain and configure DNS
+10. How to test critical features before going live
+11. How to back up and restore the system in the future
+
+## 5. Final verification report
+
+Before considering this complete, provide a report named `HANDOVER_CHECKLIST.md` that confirms:
+
+* The app can be started from a clean environment using only the handover package
+* All frontend and backend functionality has been identified
+* All databases and data sources have been identified
+* All export files are included or clearly identified as requiring separate transfer
+* All required secrets are listed by name in `.env.example`
+* All integrations are documented
+* All known limitations, missing items, risks, and manual migration steps are listed
+* A new owner can relaunch the app without depending on this Replit workspace
+
+At the end, show me:
+
+1. A complete list of files created for the handover package
+2. The exact command or process to download the ZIP
+3. Any items I must manually export or transfer from Replit or other services
+4. Any items that Replit cannot include in a project export
+
+Do not claim the handover is complete until every item above is addressed.
