@@ -1,12 +1,24 @@
-import Stripe from "stripe";
+import app from "./app";
+import { logger } from "./lib/logger";
+import { startAutomationScheduler } from "./lib/automationScheduler";
 
-/**
- * Returns a fresh authenticated Stripe client using STRIPE_SECRET_KEY env var.
- */
-export function getStripeClient(): Stripe {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) {
-    throw new Error("STRIPE_SECRET_KEY environment variable is required");
-  }
-  return new Stripe(secretKey);
+const rawPort = process.env["PORT"];
+
+if (!rawPort) {
+  throw new Error("PORT environment variable is required but was not provided.");
 }
+
+const port = Number(rawPort);
+
+if (Number.isNaN(port) || port <= 0) {
+  throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+app.listen(port, (err) => {
+  if (err) {
+    logger.error({ err }, "Error listening on port");
+    process.exit(1);
+  }
+  logger.info({ port }, "Server listening");
+  startAutomationScheduler();
+});

@@ -1,135 +1,86 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
-import { db, leadsTable, conversationsTable, businessesTable } from "@workspace/db";
-import { runReceptionistTurn, testReceptionistReply } from "../lib/receptionist";
+import { eq, and, asc } from "drizzle-orm";
+import { db, appointmentsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { dispatchEvent } from "../lib/webhookDispatcher";
-import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+router.use(requireAuth);
 
-// POST /api/ai/test
-// Authenticated preview endpoint for the Knowledge Base "Test AI Response"
-// tool. Runs a real Claude call using the business's live system prompt, but
-// writes nothing to the database — safe to click repeatedly while tuning
-// services/FAQs/tone.
-router.post("/ai/test", requireAuth, async (req: Request, res: Response) => {
-  const { message } = req.body ?? {};
-  if (!message) {
-    res.status(400).json({ error: "message is required" });
-    return;
+// GET /api/appointments
+router.get("/appointments", async (req: Request, res: Response) => {
+  const { status, date } = req.query as Record<string, string>;
+  const businessId = req.auth!.businessId;
+
+  const conditions = [eq(appointmentsTable.businessId, businessId)];
+  if (status && status !== "all") conditions.push(eq(appointmentsTable.status, status));
+
+  let appts = await db.select().from(appointmentsTable).where(and(...conditions)).orderBy(asc(appointmentsTable.scheduledAt));
+
+  if (date) {
+    const d = new Date(date);
+    appts = appts.filter((a) => new Date(a.scheduledAt).toDateString() === d.toDateString());
   }
-  try {
-    const reply = await testReceptionistReply(req.auth!.businessId, message);
-    res.json({ reply });
-  } catch (err) {
-    logger.error({ err }, "AI test call failed");
-    const msg = err instanceof Error ? err.message : "AI test error";
-    res.status(500).json({ error: msg });
-  }
+
+  res.json({ appointments: appts, total: appts.length });
 });
 
-/**
- * POST /api/ai/receptionist/message
- * Public inbound endpoint (embedded on the business's own site's chat widget,
- * or called by an SMS/webhook adapter). No auth required — identifies the
- * business via businessId in the body, matching how a public web-chat widget
- * would call this.
- *
- * Body: { businessId, leadId?, name?, email?, phone?, channel, message }
- * If leadId is omitted, a new lead + conversation is created.
- */
-router.post("/ai/receptionist/message", async (req: Request, res: Response) => {
-  try {
-    const { businessId, leadId, name, email, phone, channel, message } = req.body ?? {};
-
-    if (!businessId || !message) {
-      res.status(400).json({ error: "businessId and message are required" });
-      return;
-    }
-
-    const business = await db.query.businessesTable.findFirst({ where: eq(businessesTable.id, Number(businessId)) });
-    if (!business) {
-      res.status(404).json({ error: "Business not found" });
-      return;
-    }
-
-    let lead;
-    let conversation;
-
-    if (leadId) {
-      lead = await db.query.leadsTable.findFirst({ where: eq(leadsTable.id, Number(leadId)) });
-      if (!lead) {
-        res.status(404).json({ error: "Lead not found" });
-        return;
-      }
-      conversation = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.leadId, lead.id) });
-    } else {
-      const start = Date.now();
-      [lead] = await db
-        .insert(leadsTable)
-        .values({
-          businessId: business.id,
-          name: name || "Website visitor",
-          email: email || null,
-          phone: phone || null,
-          source: channel === "sms" ? "sms" : "website",
-          channel: channel || "web",
-          message,
-          status: "new",
-        })
-        .returning();
-      dispatchEvent(business.id, "lead.created", { leadId: lead.id, name: lead.name, source: lead.source, channel: lead.channel }).catch(() => {});
-
-      [conversation] = await db
-        .insert(conversationsTable)
-        .values({ leadId: lead.id, channel: channel || "webchat", status: "open", aiHandled: true, messages: [] })
-        .returning();
-
-      // record AI response time once we reply, below.
-      req.app.locals.__leadStart = start;
-    }
-
-    if (!conversation) {
-      [conversation] = await db
-        .insert(conversationsTable)
-        .values({ leadId: lead.id, channel: channel || "webchat", status: "open", aiHandled: true, messages: [] })
-        .returning();
-    }
-
-    const history = conversation.messages ?? [];
-    const start = Date.now();
-
-    const { reply, conversationStatus } = await runReceptionistTurn({
-      businessId: business.id,
-      leadId: lead.id,
-      history,
-      customerMessage: message,
-    });
-
-    const responseSeconds = Math.round((Date.now() - start) / 1000);
-
-    const updatedMessages = [
-      ...history,
-      { role: "customer" as const, content: message, ts: new Date().toISOString() },
-      { role: "ai" as const, content: reply, ts: new Date().toISOString() },
-    ];
-
-    await db
-      .update(conversationsTable)
-      .set({ messages: updatedMessages, status: conversationStatus, updatedAt: new Date() })
-      .where(eq(conversationsTable.id, conversation.id));
-
-    if (!leadId) {
-      await db.update(leadsTable).set({ aiResponseTime: responseSeconds, lastContactedAt: new Date() }).where(eq(leadsTable.id, lead.id));
-    }
-
-    res.json({ leadId: lead.id, conversationId: conversation.id, reply, status: conversationStatus });
-  } catch (err) {
-    logger.error({ err }, "AI receptionist turn failed");
-    const message = err instanceof Error ? err.message : "AI receptionist error";
-    res.status(500).json({ error: message });
+// GET /api/appointments/:id
+router.get("/appointments/:id", async (req: Request, res: Response) => {
+  const appt = await db.query.appointmentsTable.findFirst({ where: eq(appointmentsTable.id, Number(req.params.id)) });
+  if (!appt || appt.businessId !== req.auth!.businessId) {
+    res.status(404).json({ error: "Appointment not found" });
+    return;
   }
+  res.json(appt);
+});
+
+// PATCH /api/appointments/:id
+router.patch("/appointments/:id", async (req: Request, res: Response) => {
+  const appt = await db.query.appointmentsTable.findFirst({ where: eq(appointmentsTable.id, Number(req.params.id)) });
+  if (!appt || appt.businessId !== req.auth!.businessId) {
+    res.status(404).json({ error: "Appointment not found" });
+    return;
+  }
+  const { businessId: _ignore, id: _ignoreId, ...safeUpdates } = req.body ?? {};
+  if (safeUpdates.scheduledAt) safeUpdates.scheduledAt = new Date(safeUpdates.scheduledAt);
+  const [updated] = await db
+    .update(appointmentsTable)
+    .set({ ...safeUpdates, updatedAt: new Date() })
+    .where(eq(appointmentsTable.id, appt.id))
+    .returning();
+  res.json(updated);
+});
+
+// POST /api/appointments
+// Manual booking from the dashboard. AI-driven bookings go through the
+// book_appointment tool in lib/receptionist.ts instead.
+router.post("/appointments", async (req: Request, res: Response) => {
+  const { customerName, customerPhone, customerEmail, service, scheduledAt, duration, estimatedValue, notes, assignedTech, address, leadId } = req.body ?? {};
+  if (!customerName || !service || !scheduledAt) {
+    res.status(400).json({ error: "customerName, service, and scheduledAt are required" });
+    return;
+  }
+  const [appt] = await db
+    .insert(appointmentsTable)
+    .values({
+      businessId: req.auth!.businessId,
+      leadId: leadId ?? null,
+      customerName,
+      customerPhone: customerPhone || null,
+      customerEmail: customerEmail || null,
+      service,
+      scheduledAt: new Date(scheduledAt),
+      duration: duration ?? 60,
+      estimatedValue: estimatedValue ?? null,
+      notes: notes || null,
+      assignedTech: assignedTech || null,
+      address: address || null,
+      status: "scheduled",
+    })
+    .returning();
+  dispatchEvent(req.auth!.businessId, "appointment.confirmed", { appointmentId: appt.id, leadId: appt.leadId, service: appt.service, scheduledAt: appt.scheduledAt }).catch(() => {});
+  res.status(201).json(appt);
 });
 
 export default router;

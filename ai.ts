@@ -1,52 +1,102 @@
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
-
-const JWT_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET;
-
-if (!JWT_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("SESSION_SECRET must be set in production");
-}
-
-// Falls back to a dev-only secret so local/demo runs don't crash before .env is filled in.
-const SECRET = JWT_SECRET || "dev-only-insecure-secret-change-me";
-
-export interface AuthTokenPayload {
-  userId: number;
-  businessId: number;
-  role: string;
-  isPlatformAdmin?: boolean;
-}
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12);
-}
-
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
-}
-
-export function signToken(payload: AuthTokenPayload): string {
-  return jwt.sign(payload, SECRET, { expiresIn: "30d" });
-}
+import { logger } from "./logger";
 
 /**
- * Platform-admin access is controlled entirely by PLATFORM_ADMIN_EMAILS, an
- * env var (comma-separated emails) — never settable through signup, invite,
- * or any user-facing form. This is intentional: the only way to grant it is
- * to edit your deployment's environment variables and redeploy.
+ * Notification layer for email + SMS.
+ *
+ * Real SDK calls are used whenever the relevant API key is present in the
+ * environment. If a key is missing, we log the message instead of throwing —
+ * this lets the whole app run locally/demo without every integration
+ * configured, while still doing REAL sends the moment keys are added.
  */
-export function isPlatformAdminEmail(email: string): boolean {
-  const allowlist = (process.env.PLATFORM_ADMIN_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  return allowlist.includes(email.toLowerCase());
+
+let resendClient: import("resend").Resend | null = null;
+async function getResend() {
+  if (!process.env.RESEND_API_KEY) return null;
+  if (!resendClient) {
+    const { Resend } = await import("resend");
+    resendClient = new Resend(process.env.RESEND_API_KEY);
+  }
+  return resendClient;
 }
 
-export function verifyToken(token: string): AuthTokenPayload | null {
-  try {
-    return jwt.verify(token, SECRET) as AuthTokenPayload;
-  } catch {
-    return null;
+let twilioClient: ReturnType<typeof import("twilio")> | null = null;
+async function getTwilio() {
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return null;
+  if (!twilioClient) {
+    const twilioModule = await import("twilio");
+    twilioClient = twilioModule.default(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
   }
+  return twilioClient;
+}
+
+export interface SendEmailArgs {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+}
+
+export async function sendEmail(args: SendEmailArgs): Promise<{ sent: boolean; provider: string }> {
+  const resend = await getResend();
+  if (!resend) {
+    logger.warn({ to: args.to, subject: args.subject }, "RESEND_API_KEY not set — email not sent (logged only)");
+    return { sent: false, provider: "none" };
+  }
+
+  const from = process.env.NOTIFY_FROM_EMAIL || "BurnCall <notifications@resend.dev>";
+  try {
+    await resend.emails.send({
+      from,
+      to: args.to,
+      subject: args.subject,
+      text: args.text,
+      html: args.html,
+    });
+    return { sent: true, provider: "resend" };
+  } catch (err) {
+    logger.error({ err, to: args.to }, "Resend email send failed");
+    return { sent: false, provider: "resend" };
+  }
+}
+
+export interface SendSmsArgs {
+  to: string;
+  body: string;
+}
+
+export async function sendSms(args: SendSmsArgs): Promise<{ sent: boolean; provider: string }> {
+  const twilio = await getTwilio();
+  const fromNumber = process.env.TWILIO_FROM_NUMBER;
+  if (!twilio || !fromNumber) {
+    logger.warn({ to: args.to }, "TWILIO_* env vars not set — SMS not sent (logged only)");
+    return { sent: false, provider: "none" };
+  }
+
+  try {
+    await twilio.messages.create({ to: args.to, from: fromNumber, body: args.body });
+    return { sent: true, provider: "twilio" };
+  } catch (err) {
+    logger.error({ err, to: args.to }, "Twilio SMS send failed");
+    return { sent: false, provider: "twilio" };
+  }
+}
+
+/** Notifies the business owner/team that a lead needs human attention (escalation). */
+export async function notifyBusinessOfEscalation(opts: {
+  notifyEmails?: string | null;
+  businessName: string;
+  leadName: string;
+  reason: string;
+}) {
+  if (!opts.notifyEmails) return;
+  const recipients = opts.notifyEmails.split(",").map((e) => e.trim()).filter(Boolean);
+  await Promise.all(
+    recipients.map((to) =>
+      sendEmail({
+        to,
+        subject: `⚠️ ${opts.businessName}: ${opts.leadName} needs a human`,
+        text: `${opts.leadName} needs a human response.\n\nReason: ${opts.reason}\n\nOpen the Inbox to respond.`,
+      }),
+    ),
+  );
 }

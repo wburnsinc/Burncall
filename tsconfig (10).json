@@ -1,10 +1,28 @@
-export * from "./users";
-export * from "./businesses";
-export * from "./leads";
-export * from "./appointments";
-export * from "./conversations";
-export * from "./automations";
-export * from "./teamMembers";
-export * from "./automationRuns";
-export * from "./webhooks";
-export * from "./aiUsageLog";
+import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { businessesTable } from "./businesses";
+import { leadsTable } from "./leads";
+
+export const appointmentsTable = pgTable("appointments", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull().references(() => businessesTable.id),
+  leadId: integer("lead_id").references(() => leadsTable.id),
+  customerName: text("customer_name").notNull(),
+  customerPhone: text("customer_phone"),
+  customerEmail: text("customer_email"),
+  service: text("service").notNull(),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  duration: integer("duration").default(60), // minutes
+  status: text("status").notNull().default("scheduled"), // scheduled | confirmed | completed | cancelled | no_show
+  estimatedValue: integer("estimated_value"),
+  notes: text("notes"),
+  assignedTech: text("assigned_tech"),
+  address: text("address"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertAppointmentSchema = createInsertSchema(appointmentsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+export type Appointment = typeof appointmentsTable.$inferSelect;

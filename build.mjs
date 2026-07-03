@@ -1,87 +1,126 @@
-import { Router, type IRouter, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
-import { db, teamMembersTable, businessesTable } from "@workspace/db";
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
-import { signToken } from "../lib/auth";
-import { sendEmail } from "../lib/notifications";
-import { logger } from "../lib/logger";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { build as esbuild } from "esbuild";
+import esbuildPluginPino from "esbuild-plugin-pino";
+import { rm } from "node:fs/promises";
 
-const router: IRouter = Router();
-router.use(requireAuth);
+// Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
+globalThis.require = createRequire(import.meta.url);
 
-// GET /api/team
-router.get("/team", async (req: Request, res: Response) => {
-  const members = await db.select().from(teamMembersTable).where(eq(teamMembersTable.businessId, req.auth!.businessId));
-  res.json({ members, total: members.length });
+const artifactDir = path.dirname(fileURLToPath(import.meta.url));
+
+async function buildAll() {
+  const distDir = path.resolve(artifactDir, "dist");
+  await rm(distDir, { recursive: true, force: true });
+
+  await esbuild({
+    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    platform: "node",
+    bundle: true,
+    format: "esm",
+    outdir: distDir,
+    outExtension: { ".js": ".mjs" },
+    logLevel: "info",
+    // Some packages may not be bundleable, so we externalize them, we can add more here as needed.
+    // Some of the packages below may not be imported or installed, but we're adding them in case they are in the future.
+    // Examples of unbundleable packages:
+    // - uses native modules and loads them dynamically (e.g. sharp)
+    // - use path traversal to read files (e.g. @google-cloud/secret-manager loads sibling .proto files)
+    external: [
+      "*.node",
+      "sharp",
+      "better-sqlite3",
+      "sqlite3",
+      "canvas",
+      "bcrypt",
+      "argon2",
+      "fsevents",
+      "re2",
+      "farmhash",
+      "xxhash-addon",
+      "bufferutil",
+      "utf-8-validate",
+      "ssh2",
+      "cpu-features",
+      "dtrace-provider",
+      "isolated-vm",
+      "lightningcss",
+      "pg-native",
+      "oracledb",
+      "mongodb-client-encryption",
+      "nodemailer",
+      "handlebars",
+      "knex",
+      "typeorm",
+      "protobufjs",
+      "onnxruntime-node",
+      "@tensorflow/*",
+      "@prisma/client",
+      "@mikro-orm/*",
+      "@grpc/*",
+      "@swc/*",
+      "@aws-sdk/*",
+      "@azure/*",
+      "@opentelemetry/*",
+      "@google-cloud/*",
+      "@google/*",
+      "googleapis",
+      "firebase-admin",
+      "@parcel/watcher",
+      "@sentry/profiling-node",
+      "@tree-sitter/*",
+      "aws-sdk",
+      "classic-level",
+      "dd-trace",
+      "ffi-napi",
+      "grpc",
+      "hiredis",
+      "kerberos",
+      "leveldown",
+      "miniflare",
+      "mysql2",
+      "newrelic",
+      "odbc",
+      "piscina",
+      "realm",
+      "ref-napi",
+      "rocksdb",
+      "sass-embedded",
+      "sequelize",
+      "serialport",
+      "snappy",
+      "tinypool",
+      "usb",
+      "workerd",
+      "wrangler",
+      "zeromq",
+      "zeromq-prebuilt",
+      "playwright",
+      "puppeteer",
+      "puppeteer-core",
+      "electron",
+    ],
+    sourcemap: "linked",
+    plugins: [
+      // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
+      esbuildPluginPino({ transports: ["pino-pretty"] })
+    ],
+    // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
+    banner: {
+      js: `import { createRequire as __bannerCrReq } from 'node:module';
+import __bannerPath from 'node:path';
+import __bannerUrl from 'node:url';
+
+globalThis.require = __bannerCrReq(import.meta.url);
+globalThis.__filename = __bannerUrl.fileURLToPath(import.meta.url);
+globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
+    `,
+    },
+  });
+}
+
+buildAll().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-// POST /api/team — invite a team member. Sends a real email (via Resend, if
-// configured) containing an accept-invite link with a 7-day token. Only
-// owners/admins can invite.
-router.post("/team", requireRole("owner", "admin"), async (req: Request, res: Response) => {
-  const { name, email, role } = req.body ?? {};
-  if (!name || !email) {
-    res.status(400).json({ error: "name and email are required" });
-    return;
-  }
-
-  const [member] = await db
-    .insert(teamMembersTable)
-    .values({ businessId: req.auth!.businessId, name, email, role: role || "technician", status: "invited" })
-    .returning();
-
-  // The invite token embeds the team_members row id in the `userId` slot of
-  // the JWT payload, tagged with role "invite" so it can only be redeemed at
-  // /api/auth/accept-invite — never treated as a real session token.
-  const inviteToken = signToken({ userId: member.id, businessId: req.auth!.businessId, role: "invite" });
-
-  try {
-    const business = await db.query.businessesTable.findFirst({ where: eq(businessesTable.id, req.auth!.businessId) });
-    const appUrl = process.env.PUBLIC_APP_URL || "http://localhost:5173";
-    await sendEmail({
-      to: email,
-      subject: `You've been invited to join ${business?.name || "a team"} on BurnCall`,
-      text: `${name}, you've been invited to join ${business?.name || "the team"} on BurnCall as a ${role || "technician"}. Set up your account here: ${appUrl}/accept-invite?token=${inviteToken}\n\nThis link expires in 7 days.`,
-    });
-  } catch (err) {
-    logger.error({ err }, "team invite email failed");
-    // Member is still created even if the email fails — the accept link is
-    // also returned in the response so it can be shared manually if needed.
-  }
-
-  res.status(201).json({ ...member, inviteToken });
-});
-
-// PATCH /api/team/:id — update role/status
-router.patch("/team/:id", requireRole("owner", "admin"), async (req: Request, res: Response) => {
-  const member = await db.query.teamMembersTable.findFirst({ where: eq(teamMembersTable.id, Number(req.params.id)) });
-  if (!member || member.businessId !== req.auth!.businessId) {
-    res.status(404).json({ error: "Team member not found" });
-    return;
-  }
-  const { name, role, status } = req.body ?? {};
-  const updates: Record<string, unknown> = {};
-  if (name) updates.name = name;
-  if (role) updates.role = role;
-  if (status) updates.status = status;
-
-  const [updated] = await db
-    .update(teamMembersTable)
-    .set({ ...updates, updatedAt: new Date() })
-    .where(eq(teamMembersTable.id, member.id))
-    .returning();
-  res.json(updated);
-});
-
-// DELETE /api/team/:id — remove a team member
-router.delete("/team/:id", requireRole("owner", "admin"), async (req: Request, res: Response) => {
-  const member = await db.query.teamMembersTable.findFirst({ where: eq(teamMembersTable.id, Number(req.params.id)) });
-  if (!member || member.businessId !== req.auth!.businessId) {
-    res.status(404).json({ error: "Team member not found" });
-    return;
-  }
-  await db.delete(teamMembersTable).where(eq(teamMembersTable.id, member.id));
-  res.json({ success: true });
-});
-
-export default router;

@@ -1,84 +1,137 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
-import { db, businessesTable, leadsTable, conversationsTable } from "@workspace/db";
-import { runReceptionistTurn } from "../lib/receptionist";
-import { dispatchEvent } from "../lib/webhookDispatcher";
-import { logger } from "../lib/logger";
+import { eq, desc } from "drizzle-orm";
+import { db, leadsTable, appointmentsTable, conversationsTable, automationsTable } from "@workspace/db";
+import { requireAuth, requireRole } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
+router.use(requireAuth);
+// Per the Team permission matrix: the revenue dashboard is owner/admin only
+router.use(requireRole("owner", "admin"));
 
-/**
- * POST /api/twilio/sms-inbound
- * Configure this URL as the "A message comes in" webhook on your Twilio
- * phone number (Twilio Console → Phone Numbers → your number → Messaging).
- * Twilio posts application/x-www-form-urlencoded, so this needs urlencoded
- * body parsing — app.ts already applies express.urlencoded() globally.
- *
- * Matches the inbound number (`To`) to a business by phone number. Replies
- * with TwiML so Twilio sends the AI's reply back as an SMS automatically —
- * no separate outbound send needed for the reply itself.
- */
-router.post("/twilio/sms-inbound", async (req: Request, res: Response) => {
-  const from = req.body?.From as string | undefined;
-  const to = req.body?.To as string | undefined;
-  const body = (req.body?.Body as string | undefined) ?? "";
+function dayKey(d: Date) {
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+function monthKey(d: Date) {
+  return d.toLocaleDateString("en-US", { month: "short" });
+}
 
-  res.set("Content-Type", "text/xml");
+// GET /api/dashboard/stats
+router.get("/dashboard/stats", async (req: Request, res: Response) => {
+  const businessId = req.auth!.businessId;
 
-  if (!from || !to || !body.trim()) {
-    res.send("<Response></Response>");
-    return;
-  }
+  const leads = await db.select().from(leadsTable).where(eq(leadsTable.businessId, businessId));
+  const appointments = await db.select().from(appointmentsTable).where(eq(appointmentsTable.businessId, businessId));
 
-  try {
-    const business = await db.query.businessesTable.findFirst({ where: eq(businessesTable.phone, to) });
-    if (!business) {
-      logger.warn({ to }, "Inbound SMS to unrecognized business number");
-      res.send("<Response></Response>");
-      return;
-    }
+  const convRows = await db
+    .select({ conv: conversationsTable, lead: leadsTable })
+    .from(conversationsTable)
+    .innerJoin(leadsTable, eq(conversationsTable.leadId, leadsTable.id))
+    .where(eq(leadsTable.businessId, businessId));
 
-    let lead = await db.query.leadsTable.findFirst({ where: eq(leadsTable.phone, from) });
-    let conversation;
+  const automations = await db.select().from(automationsTable).where(eq(automationsTable.businessId, businessId));
 
-    if (!lead) {
-      [lead] = await db
-        .insert(leadsTable)
-        .values({ businessId: business.id, name: from, phone: from, source: "sms", channel: "sms", message: body, status: "new" })
-        .returning();
-      dispatchEvent(business.id, "lead.created", { leadId: lead.id, name: lead.name, source: "sms" }).catch(() => {});
-    }
+  const responseTimes = leads.map((l) => l.aiResponseTime).filter((t): t is number => typeof t === "number");
+  const avgResponseTime = responseTimes.length ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0;
 
-    conversation = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.leadId, lead.id) });
-    if (!conversation) {
-      [conversation] = await db
-        .insert(conversationsTable)
-        .values({ leadId: lead.id, channel: "sms", status: "open", aiHandled: true, messages: [] })
-        .returning();
-    }
+  const qualifiedLeads = leads.filter((l) => ["qualified", "booked", "won"].includes(l.status)).length;
+  const appointmentsBooked = appointments.filter((a) => a.status !== "cancelled").length;
+  const estimatedRevenueRescued = leads.filter((l) => l.status === "won").reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
 
-    const history = conversation.messages ?? [];
-    const { reply, conversationStatus } = await runReceptionistTurn({
-      businessId: business.id,
-      leadId: lead.id,
-      history,
-      customerMessage: body,
+  const needsAttentionConvs = convRows.filter(({ conv }) => conv.status === "needs_human");
+  const needsAttention = needsAttentionConvs.slice(0, 10).map(({ conv, lead }) => ({
+    id: lead.id,
+    name: lead.name,
+    issue: "Needs a human response",
+    type: lead.urgency === "emergency" ? "urgent" : "missed_call",
+    minutesAgo: Math.round((Date.now() - new Date(conv.updatedAt).getTime()) / 60000),
+  }));
+
+  const recentLeads = [...leads]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5)
+    .map((l) => ({ id: l.id, name: l.name, service: l.service, status: l.status, urgency: l.urgency, createdAt: l.createdAt, estimatedValue: l.estimatedValue }));
+
+  const todayWins: string[] = [];
+  const bookedToday = leads.filter((l) => l.status === "booked" && new Date(l.updatedAt).toDateString() === new Date().toDateString());
+  bookedToday.slice(0, 3).forEach((l) => todayWins.push(`${l.name} booked ${l.service || "an appointment"}`));
+  if (responseTimes.length) todayWins.push(`AI responded to ${responseTimes.length} lead${responseTimes.length === 1 ? "" : "s"} in an average of ${avgResponseTime}s`);
+  const aiClosedConvs = convRows.filter(({ conv }) => conv.status !== "needs_human" && conv.aiHandled).length;
+  if (aiClosedConvs) todayWins.push(`${aiClosedConvs} conversation${aiClosedConvs === 1 ? "" : "s"} fully handled by AI, no human needed`);
+
+  const automationPerformance = automations.map((a) => ({
+    name: a.name,
+    triggered: a.stats?.triggered ?? 0,
+    success: a.stats?.sent ?? 0,
+    rate: a.stats?.triggered ? Math.round(((a.stats.sent ?? 0) / a.stats.triggered) * 100) : 0,
+  }));
+
+  res.json({
+    metrics: {
+      leadsReceived: leads.length,
+      avgResponseTime,
+      qualifiedLeads,
+      appointmentsBooked,
+      estimatedRevenueRescued,
+      needsAttentionCount: needsAttentionConvs.length,
+    },
+    todayWins,
+    recentLeads,
+    needsAttention,
+    automationPerformance,
+  });
+});
+
+// GET /api/dashboard/charts
+router.get("/dashboard/charts", async (req: Request, res: Response) => {
+  const businessId = req.auth!.businessId;
+  const leads = await db.select().from(leadsTable).where(eq(leadsTable.businessId, businessId));
+
+  // Leads by day — last 7 days
+  const days: { date: string; leads: number; qualified: number; booked: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = dayKey(d);
+    const dayLeads = leads.filter((l) => dayKey(new Date(l.createdAt)) === key);
+    days.push({
+      date: key,
+      leads: dayLeads.length,
+      qualified: dayLeads.filter((l) => ["qualified", "booked", "won"].includes(l.status)).length,
+      booked: dayLeads.filter((l) => l.status === "booked" || l.status === "won").length,
     });
-
-    const updatedMessages = [
-      ...history,
-      { role: "customer" as const, content: body, ts: new Date().toISOString() },
-      { role: "ai" as const, content: reply, ts: new Date().toISOString() },
-    ];
-    await db.update(conversationsTable).set({ messages: updatedMessages, status: conversationStatus, updatedAt: new Date() }).where(eq(conversationsTable.id, conversation.id));
-
-    // Escape XML special chars for safety before embedding in TwiML.
-    const safeReply = reply.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    res.send(`<Response><Message>${safeReply}</Message></Response>`);
-  } catch (err) {
-    logger.error({ err }, "Twilio inbound SMS handling failed");
-    res.send("<Response><Message>Thanks for your message — a team member will follow up shortly.</Message></Response>");
   }
+
+  // Source breakdown
+  const sourceCounts = new Map<string, number>();
+  for (const l of leads) sourceCounts.set(l.source, (sourceCounts.get(l.source) ?? 0) + 1);
+  const sourceBreakdown = Array.from(sourceCounts.entries()).map(([source, count]) => ({
+    source,
+    count,
+    pct: leads.length ? Math.round((count / leads.length) * 100) : 0,
+  }));
+
+  // Funnel
+  const funnel = [
+    { stage: "Received", count: leads.length },
+    { stage: "Contacted", count: leads.filter((l) => l.lastContactedAt).length },
+    { stage: "Qualified", count: leads.filter((l) => ["qualified", "booked", "won"].includes(l.status)).length },
+    { stage: "Booked", count: leads.filter((l) => l.status === "booked" || l.status === "won").length },
+    { stage: "Won", count: leads.filter((l) => l.status === "won").length },
+  ];
+
+  // Revenue rescued by month (won leads only) — last 6 months
+  const months: { month: string; rescued: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    const key = monthKey(d);
+    const rescued = leads
+      .filter((l) => l.status === "won" && monthKey(new Date(l.updatedAt)) === key)
+      .reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+    months.push({ month: key, rescued });
+  }
+
+  res.json({ leadsByDay: days, sourceBreakdown, funnel, revenueRescued: months });
 });
 
 export default router;

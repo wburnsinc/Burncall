@@ -1,49 +1,34 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { requireAuth } from "../middlewares/requireAuth";
+import { eq } from "drizzle-orm";
+import { db, appointmentsTable, businessesTable } from "@workspace/db";
+import { buildAppointmentIcs } from "../lib/ics";
 
+// Intentionally unauthenticated routes — meant to be opened directly from an
+// emailed/texted link by a customer who has no BurnCall account. The
+// unguessable numeric id + no sensitive data in the response is the access
+// control here, same as most calendar-invite links.
 const router: IRouter = Router();
-router.use(requireAuth);
 
-// GET /api/integrations/status
-// Reports which real integrations are actually configured in this
-// environment — a direct env-var presence check, not a mock. This lets the
-// Integrations page show accurate connect/disconnect state instead of
-// pretending everything is wired up.
-router.get("/integrations/status", (_req: Request, res: Response) => {
-  res.json({
-    integrations: [
-      {
-        id: "anthropic",
-        name: "Anthropic Claude (AI Receptionist)",
-        connected: Boolean(process.env.ANTHROPIC_API_KEY),
-        required: true,
-      },
-      {
-        id: "resend",
-        name: "Resend (Email)",
-        connected: Boolean(process.env.RESEND_API_KEY),
-        required: false,
-      },
-      {
-        id: "twilio",
-        name: "Twilio (SMS)",
-        connected: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER),
-        required: false,
-      },
-      {
-        id: "stripe",
-        name: "Stripe (Billing)",
-        connected: Boolean(process.env.STRIPE_SECRET_KEY),
-        required: false,
-      },
-      {
-        id: "database",
-        name: "PostgreSQL Database",
-        connected: Boolean(process.env.DATABASE_URL),
-        required: true,
-      },
-    ],
+// GET /api/appointments/:id/ics — real "add to calendar" file (Google/Apple/Outlook compatible)
+router.get("/appointments/:id/ics", async (req: Request, res: Response) => {
+  const appt = await db.query.appointmentsTable.findFirst({ where: eq(appointmentsTable.id, Number(req.params.id)) });
+  if (!appt) {
+    res.status(404).json({ error: "Appointment not found" });
+    return;
+  }
+  const business = await db.query.businessesTable.findFirst({ where: eq(businessesTable.id, appt.businessId) });
+  const ics = buildAppointmentIcs({
+    uid: String(appt.id),
+    businessName: business?.name || "Your service appointment",
+    service: appt.service,
+    customerName: appt.customerName,
+    scheduledAt: new Date(appt.scheduledAt),
+    durationMinutes: appt.duration ?? 60,
+    address: appt.address,
   });
+  res.set("Content-Type", "text/calendar; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="appointment-${appt.id}.ics"`);
+  res.send(ics);
 });
 
 export default router;

@@ -1,12 +1,2 @@
-{
-  "name": "@workspace/api-zod",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "dependencies": {
-    "zod": "catalog:"
-  }
-}
+export * from "./generated/api";
+export * from "./generated/types";
