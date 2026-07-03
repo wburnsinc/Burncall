@@ -9,36 +9,41 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       # Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
-      
+
       # Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          cache: 'pnpm'
 
+      # Setup pnpm
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
 
+      # Install dependencies
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      # Run linting
       - name: Run linting
         run: pnpm run lint --if-present
 
+      # Run tests
       - name: Run tests
         run: pnpm run test --if-present
 
+      # Build project
       - name: Build project
         run: pnpm run build
 
+      # Deploy to Vercel (Preview)
       - name: Deploy to Vercel (Preview)
         if: github.event_name == 'pull_request'
         uses: amondnet/vercel-action@v25
@@ -48,6 +53,7 @@ jobs:
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
 
+      # Deploy to Vercel (Production)
       - name: Deploy to Vercel (Production)
         if: github.ref == 'refs/heads/main'
         uses: amondnet/vercel-action@v25
