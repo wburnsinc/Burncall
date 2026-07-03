@@ -22,9 +22,13 @@ jobs:
           node-version: '18'
           cache: 'npm'
       
-      # Install dependencies
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup pnpm
+  uses: pnpm/action-setup@v4
+  with:
+    version: 9
+
+- name: Install dependencies
+  run: pnpm install --no-frozen-lockfile
       
       # Run linting
       - name: Run linting
