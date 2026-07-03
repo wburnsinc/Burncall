@@ -1,100 +1,84 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq, and, desc, ilike, or } from "drizzle-orm";
-import { db, leadsTable } from "@workspace/db";
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { eq } from "drizzle-orm";
+import { db, businessesTable, leadsTable, conversationsTable } from "@workspace/db";
+import { runReceptionistTurn } from "../lib/receptionist";
 import { dispatchEvent } from "../lib/webhookDispatcher";
-
-// Per the Team permission matrix: leads are visible/manageable to owner, admin, dispatcher (not technician)
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
-router.use(requireAuth);
-router.use(requireRole("owner", "admin", "dispatcher"));
 
-// GET /api/leads
-router.get("/leads", async (req: Request, res: Response) => {
-  const { status, source, search, page = "1", limit = "20" } = req.query as Record<string, string>;
-  const businessId = req.auth!.businessId;
+/**
+ * POST /api/twilio/sms-inbound
+ * Configure this URL as the "A message comes in" webhook on your Twilio
+ * phone number (Twilio Console → Phone Numbers → your number → Messaging).
+ * Twilio posts application/x-www-form-urlencoded, so this needs urlencoded
+ * body parsing — app.ts already applies express.urlencoded() globally.
+ *
+ * Matches the inbound number (`To`) to a business by phone number. Replies
+ * with TwiML so Twilio sends the AI's reply back as an SMS automatically —
+ * no separate outbound send needed for the reply itself.
+ */
+router.post("/twilio/sms-inbound", async (req: Request, res: Response) => {
+  const from = req.body?.From as string | undefined;
+  const to = req.body?.To as string | undefined;
+  const body = (req.body?.Body as string | undefined) ?? "";
 
-  const conditions = [eq(leadsTable.businessId, businessId)];
-  if (status && status !== "all") conditions.push(eq(leadsTable.status, status));
-  if (source && source !== "all") conditions.push(eq(leadsTable.source, source));
-  if (search) {
-    const q = `%${search}%`;
-    conditions.push(or(ilike(leadsTable.name, q), ilike(leadsTable.email, q), ilike(leadsTable.phone, q))!);
-  }
+  res.set("Content-Type", "text/xml");
 
-  const pageNum = Math.max(1, parseInt(page) || 1);
-  const limitNum = Math.max(1, parseInt(limit) || 20);
-
-  const all = await db.select().from(leadsTable).where(and(...conditions)).orderBy(desc(leadsTable.createdAt));
-  const total = all.length;
-  const paginated = all.slice((pageNum - 1) * limitNum, pageNum * limitNum);
-
-  res.json({ leads: paginated, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) });
-});
-
-// GET /api/leads/:id
-router.get("/leads/:id", async (req: Request, res: Response) => {
-  const lead = await db.query.leadsTable.findFirst({ where: eq(leadsTable.id, Number(req.params.id)) });
-  if (!lead || lead.businessId !== req.auth!.businessId) {
-    res.status(404).json({ error: "Lead not found" });
+  if (!from || !to || !body.trim()) {
+    res.send("<Response></Response>");
     return;
   }
-  res.json(lead);
-});
 
-// PATCH /api/leads/:id
-router.patch("/leads/:id", async (req: Request, res: Response) => {
-  const lead = await db.query.leadsTable.findFirst({ where: eq(leadsTable.id, Number(req.params.id)) });
-  if (!lead || lead.businessId !== req.auth!.businessId) {
-    res.status(404).json({ error: "Lead not found" });
-    return;
+  try {
+    const business = await db.query.businessesTable.findFirst({ where: eq(businessesTable.phone, to) });
+    if (!business) {
+      logger.warn({ to }, "Inbound SMS to unrecognized business number");
+      res.send("<Response></Response>");
+      return;
+    }
+
+    let lead = await db.query.leadsTable.findFirst({ where: eq(leadsTable.phone, from) });
+    let conversation;
+
+    if (!lead) {
+      [lead] = await db
+        .insert(leadsTable)
+        .values({ businessId: business.id, name: from, phone: from, source: "sms", channel: "sms", message: body, status: "new" })
+        .returning();
+      dispatchEvent(business.id, "lead.created", { leadId: lead.id, name: lead.name, source: "sms" }).catch(() => {});
+    }
+
+    conversation = await db.query.conversationsTable.findFirst({ where: eq(conversationsTable.leadId, lead.id) });
+    if (!conversation) {
+      [conversation] = await db
+        .insert(conversationsTable)
+        .values({ leadId: lead.id, channel: "sms", status: "open", aiHandled: true, messages: [] })
+        .returning();
+    }
+
+    const history = conversation.messages ?? [];
+    const { reply, conversationStatus } = await runReceptionistTurn({
+      businessId: business.id,
+      leadId: lead.id,
+      history,
+      customerMessage: body,
+    });
+
+    const updatedMessages = [
+      ...history,
+      { role: "customer" as const, content: body, ts: new Date().toISOString() },
+      { role: "ai" as const, content: reply, ts: new Date().toISOString() },
+    ];
+    await db.update(conversationsTable).set({ messages: updatedMessages, status: conversationStatus, updatedAt: new Date() }).where(eq(conversationsTable.id, conversation.id));
+
+    // Escape XML special chars for safety before embedding in TwiML.
+    const safeReply = reply.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    res.send(`<Response><Message>${safeReply}</Message></Response>`);
+  } catch (err) {
+    logger.error({ err }, "Twilio inbound SMS handling failed");
+    res.send("<Response><Message>Thanks for your message — a team member will follow up shortly.</Message></Response>");
   }
-  // Never let the body override which business owns this lead.
-  const { businessId: _ignore, id: _ignoreId, ...safeUpdates } = req.body ?? {};
-  const [updated] = await db
-    .update(leadsTable)
-    .set({ ...safeUpdates, updatedAt: new Date() })
-    .where(eq(leadsTable.id, lead.id))
-    .returning();
-
-  if (safeUpdates.status && safeUpdates.status !== lead.status && ["qualified", "won", "lost"].includes(safeUpdates.status)) {
-    dispatchEvent(req.auth!.businessId, `lead.${safeUpdates.status}`, { leadId: updated.id, name: updated.name, service: updated.service, estimatedValue: updated.estimatedValue }).catch(() => {});
-  }
-
-  res.json(updated);
-});
-
-// POST /api/leads
-// Manual lead creation from the dashboard (e.g. a phone call logged by staff).
-// AI-sourced leads come in through /api/ai/receptionist/message and
-// /api/twilio/sms-inbound instead.
-router.post("/leads", async (req: Request, res: Response) => {
-  const { name, email, phone, source, channel, message, service, zipCode, urgency, estimatedValue } = req.body ?? {};
-  if (!name) {
-    res.status(400).json({ error: "name is required" });
-    return;
-  }
-  const [lead] = await db
-    .insert(leadsTable)
-    .values({
-      businessId: req.auth!.businessId,
-      name,
-      email: email || null,
-      phone: phone || null,
-      source: source || "website",
-      channel: channel || "web",
-      message: message || null,
-      service: service || null,
-      zipCode: zipCode || null,
-      urgency: urgency || null,
-      estimatedValue: estimatedValue ?? null,
-      status: "new",
-      score: 50,
-    })
-    .returning();
-  dispatchEvent(req.auth!.businessId, "lead.created", { leadId: lead.id, name: lead.name, source: lead.source, service: lead.service }).catch(() => {});
-  res.status(201).json(lead);
 });
 
 export default router;

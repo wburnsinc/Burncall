@@ -1,28 +1,22 @@
-"use client"
-
 import * as React from "react"
-import * as ProgressPrimitive from "@radix-ui/react-progress"
 
 import { cn } from "@/lib/utils"
 
-const Progress = React.forwardRef<
-  React.ElementRef<typeof ProgressPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
->(({ className, value, ...props }, ref) => (
-  <ProgressPrimitive.Root
-    ref={ref}
-    className={cn(
-      "relative h-2 w-full overflow-hidden rounded-full bg-primary/20",
-      className
-    )}
-    {...props}
-  >
-    <ProgressPrimitive.Indicator
-      className="h-full w-full flex-1 bg-primary transition-all"
-      style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+const Textarea = React.forwardRef<
+  HTMLTextAreaElement,
+  React.ComponentProps<"textarea">
+>(({ className, ...props }, ref) => {
+  return (
+    <textarea
+      className={cn(
+        "flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        className
+      )}
+      ref={ref}
+      {...props}
     />
-  </ProgressPrimitive.Root>
-))
-Progress.displayName = ProgressPrimitive.Root.displayName
+  )
+})
+Textarea.displayName = "Textarea"
 
-export { Progress }
+export { Textarea }

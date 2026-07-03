@@ -1,114 +1,19 @@
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
+"use client"
+
+import { useMemo } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 
-function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
+function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
-    <div
-      role="list"
-      data-slot="item-group"
-      className={cn("group/item-group flex flex-col", className)}
-      {...props}
-    />
-  )
-}
-
-function ItemSeparator({
-  className,
-  ...props
-}: React.ComponentProps<typeof Separator>) {
-  return (
-    <Separator
-      data-slot="item-separator"
-      orientation="horizontal"
-      className={cn("my-0", className)}
-      {...props}
-    />
-  )
-}
-
-const itemVariants = cva(
-  "group/item [a]:hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-ring/50 [a]:transition-colors flex flex-wrap items-center rounded-md border border-transparent text-sm outline-none transition-colors duration-100 focus-visible:ring-[3px]",
-  {
-    variants: {
-      variant: {
-        default: "bg-transparent",
-        outline: "border-border",
-        muted: "bg-muted/50",
-      },
-      size: {
-        default: "gap-4 p-4 ",
-        sm: "gap-2.5 px-4 py-3",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
-
-function Item({
-  className,
-  variant = "default",
-  size = "default",
-  asChild = false,
-  ...props
-}: React.ComponentProps<"div"> &
-  VariantProps<typeof itemVariants> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : "div"
-  return (
-    <Comp
-      data-slot="item"
-      data-variant={variant}
-      data-size={size}
-      className={cn(itemVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
-}
-
-const itemMediaVariants = cva(
-  "flex shrink-0 items-center justify-center gap-2 group-has-[[data-slot=item-description]]/item:translate-y-0.5 group-has-[[data-slot=item-description]]/item:self-start [&_svg]:pointer-events-none",
-  {
-    variants: {
-      variant: {
-        default: "bg-transparent",
-        icon: "bg-muted size-8 rounded-sm border [&_svg:not([class*='size-'])]:size-4",
-        image:
-          "size-10 overflow-hidden rounded-sm [&_img]:size-full [&_img]:object-cover",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  }
-)
-
-function ItemMedia({
-  className,
-  variant = "default",
-  ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof itemMediaVariants>) {
-  return (
-    <div
-      data-slot="item-media"
-      data-variant={variant}
-      className={cn(itemMediaVariants({ variant, className }))}
-      {...props}
-    />
-  )
-}
-
-function ItemContent({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="item-content"
+    <fieldset
+      data-slot="field-set"
       className={cn(
-        "flex flex-1 flex-col gap-1 [&+[data-slot=item-content]]:flex-none",
+        "flex flex-col gap-6",
+        "has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3",
         className
       )}
       {...props}
@@ -116,12 +21,19 @@ function ItemContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function ItemTitle({ className, ...props }: React.ComponentProps<"div">) {
+function FieldLegend({
+  className,
+  variant = "legend",
+  ...props
+}: React.ComponentProps<"legend"> & { variant?: "legend" | "label" }) {
   return (
-    <div
-      data-slot="item-title"
+    <legend
+      data-slot="field-legend"
+      data-variant={variant}
       className={cn(
-        "flex w-fit items-center gap-2 text-sm font-medium leading-snug",
+        "mb-3 font-medium",
+        "data-[variant=legend]:text-base",
+        "data-[variant=label]:text-sm",
         className
       )}
       {...props}
@@ -129,12 +41,110 @@ function ItemTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function ItemDescription({ className, ...props }: React.ComponentProps<"p">) {
+function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="field-group"
+      className={cn(
+        "group/field-group @container/field-group flex w-full flex-col gap-7 data-[slot=checkbox-group]:gap-3 [&>[data-slot=field-group]]:gap-4",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+const fieldVariants = cva(
+  "group/field data-[invalid=true]:text-destructive flex w-full gap-3",
+  {
+    variants: {
+      orientation: {
+        vertical: ["flex-col [&>*]:w-full [&>.sr-only]:w-auto"],
+        horizontal: [
+          "flex-row items-center",
+          "[&>[data-slot=field-label]]:flex-auto",
+          "has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px has-[>[data-slot=field-content]]:items-start",
+        ],
+        responsive: [
+          "@md/field-group:flex-row @md/field-group:items-center @md/field-group:[&>*]:w-auto flex-col [&>*]:w-full [&>.sr-only]:w-auto",
+          "@md/field-group:[&>[data-slot=field-label]]:flex-auto",
+          "@md/field-group:has-[>[data-slot=field-content]]:items-start @md/field-group:has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px",
+        ],
+      },
+    },
+    defaultVariants: {
+      orientation: "vertical",
+    },
+  }
+)
+
+function Field({
+  className,
+  orientation = "vertical",
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
+  return (
+    <div
+      role="group"
+      data-slot="field"
+      data-orientation={orientation}
+      className={cn(fieldVariants({ orientation }), className)}
+      {...props}
+    />
+  )
+}
+
+function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="field-content"
+      className={cn(
+        "group/field-content flex flex-1 flex-col gap-1.5 leading-snug",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function FieldLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof Label>) {
+  return (
+    <Label
+      data-slot="field-label"
+      className={cn(
+        "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50",
+        "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border [&>[data-slot=field]]:p-4",
+        "has-data-[state=checked]:bg-primary/5 has-data-[state=checked]:border-primary dark:has-data-[state=checked]:bg-primary/10",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="field-label"
+      className={cn(
+        "flex w-fit items-center gap-2 text-sm font-medium leading-snug group-data-[disabled=true]/field:opacity-50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
-      data-slot="item-description"
+      data-slot="field-description"
       className={cn(
-        "text-muted-foreground line-clamp-2 text-balance text-sm font-normal leading-normal",
+        "text-muted-foreground text-sm font-normal leading-normal group-has-[[data-orientation=horizontal]]/field:text-balance",
+        "nth-last-2:-mt-1 last:mt-0 [[data-variant=legend]+&]:-mt-1.5",
         "[&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
         className
       )}
@@ -143,51 +153,92 @@ function ItemDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
-function ItemActions({ className, ...props }: React.ComponentProps<"div">) {
+function FieldSeparator({
+  children,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & {
+  children?: React.ReactNode
+}) {
   return (
     <div
-      data-slot="item-actions"
-      className={cn("flex items-center gap-2", className)}
-      {...props}
-    />
-  )
-}
-
-function ItemHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="item-header"
+      data-slot="field-separator"
+      data-content={!!children}
       className={cn(
-        "flex basis-full items-center justify-between gap-2",
+        "relative -my-2 h-5 text-sm group-data-[variant=outline]/field-group:-mb-2",
         className
       )}
       {...props}
-    />
+    >
+      <Separator className="absolute inset-0 top-1/2" />
+      {children && (
+        <span
+          className="bg-background text-muted-foreground relative mx-auto block w-fit px-2"
+          data-slot="field-separator-content"
+        >
+          {children}
+        </span>
+      )}
+    </div>
   )
 }
 
-function ItemFooter({ className, ...props }: React.ComponentProps<"div">) {
+function FieldError({
+  className,
+  children,
+  errors,
+  ...props
+}: React.ComponentProps<"div"> & {
+  errors?: Array<{ message?: string } | undefined>
+}) {
+  const content = useMemo(() => {
+    if (children) {
+      return children
+    }
+
+    if (!errors) {
+      return null
+    }
+
+    if (errors?.length === 1 && errors[0]?.message) {
+      return errors[0].message
+    }
+
+    return (
+      <ul className="ml-4 flex list-disc flex-col gap-1">
+        {errors.map(
+          (error, index) =>
+            error?.message && <li key={index}>{error.message}</li>
+        )}
+      </ul>
+    )
+  }, [children, errors])
+
+  if (!content) {
+    return null
+  }
+
   return (
     <div
-      data-slot="item-footer"
-      className={cn(
-        "flex basis-full items-center justify-between gap-2",
-        className
-      )}
+      role="alert"
+      data-slot="field-error"
+      className={cn("text-destructive text-sm font-normal", className)}
       {...props}
-    />
+    >
+      {content}
+    </div>
   )
 }
 
 export {
-  Item,
-  ItemMedia,
-  ItemContent,
-  ItemActions,
-  ItemGroup,
-  ItemSeparator,
-  ItemTitle,
-  ItemDescription,
-  ItemHeader,
-  ItemFooter,
+  Field,
+  FieldLabel,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLegend,
+  FieldSeparator,
+  FieldSet,
+  FieldContent,
+  FieldTitle,
 }

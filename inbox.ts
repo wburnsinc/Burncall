@@ -1,38 +1,34 @@
-import { Router, type IRouter } from "express";
-import healthRouter from "./health";
-import authRouter from "./auth";
-import leadsRouter from "./leads";
-import dashboardRouter from "./dashboard";
-import appointmentsRouter from "./appointments";
-import automationsRouter from "./automations";
-import inboxRouter from "./inbox";
-import stripeRouter from "./stripe";
-import aiRouter from "./ai";
-import twilioRouter from "./twilio";
-import businessRouter from "./business";
-import teamRouter from "./team";
-import integrationsRouter from "./integrations";
-import webhooksRouter from "./webhooks";
-import publicRouter from "./public";
-import adminRouter from "./admin";
+import { Router, type IRouter, type Request, type Response } from "express";
+import { eq } from "drizzle-orm";
+import { db, appointmentsTable, businessesTable } from "@workspace/db";
+import { buildAppointmentIcs } from "../lib/ics";
 
+// Intentionally unauthenticated routes — meant to be opened directly from an
+// emailed/texted link by a customer who has no BurnCall account. The
+// unguessable numeric id + no sensitive data in the response is the access
+// control here, same as most calendar-invite links.
 const router: IRouter = Router();
 
-router.use(healthRouter);
-router.use(publicRouter);
-router.use(authRouter);
-router.use(leadsRouter);
-router.use(dashboardRouter);
-router.use(appointmentsRouter);
-router.use(automationsRouter);
-router.use(inboxRouter);
-router.use(stripeRouter);
-router.use(aiRouter);
-router.use(twilioRouter);
-router.use(businessRouter);
-router.use(teamRouter);
-router.use(integrationsRouter);
-router.use(webhooksRouter);
-router.use(adminRouter);
+// GET /api/appointments/:id/ics — real "add to calendar" file (Google/Apple/Outlook compatible)
+router.get("/appointments/:id/ics", async (req: Request, res: Response) => {
+  const appt = await db.query.appointmentsTable.findFirst({ where: eq(appointmentsTable.id, Number(req.params.id)) });
+  if (!appt) {
+    res.status(404).json({ error: "Appointment not found" });
+    return;
+  }
+  const business = await db.query.businessesTable.findFirst({ where: eq(businessesTable.id, appt.businessId) });
+  const ics = buildAppointmentIcs({
+    uid: String(appt.id),
+    businessName: business?.name || "Your service appointment",
+    service: appt.service,
+    customerName: appt.customerName,
+    scheduledAt: new Date(appt.scheduledAt),
+    durationMinutes: appt.duration ?? 60,
+    address: appt.address,
+  });
+  res.set("Content-Type", "text/calendar; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="appointment-${appt.id}.ics"`);
+  res.send(ics);
+});
 
 export default router;

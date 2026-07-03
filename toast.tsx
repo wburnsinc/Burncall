@@ -1,116 +1,83 @@
-import * as React from "react"
-import { Drawer as DrawerPrimitive } from "vaul"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { Separator } from "@/components/ui/separator"
 
-const Drawer = ({
-  shouldScaleBackground = true,
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
-  <DrawerPrimitive.Root
-    shouldScaleBackground={shouldScaleBackground}
-    {...props}
-  />
+const buttonGroupVariants = cva(
+  "flex w-fit items-stretch has-[>[data-slot=button-group]]:gap-2 [&>*]:focus-visible:relative [&>*]:focus-visible:z-10 has-[select[aria-hidden=true]:last-child]:[&>[data-slot=select-trigger]:last-of-type]:rounded-r-md [&>[data-slot=select-trigger]:not([class*='w-'])]:w-fit [&>input]:flex-1",
+  {
+    variants: {
+      orientation: {
+        horizontal:
+          "[&>*:not(:first-child)]:rounded-l-none [&>*:not(:first-child)]:border-l-0 [&>*:not(:last-child)]:rounded-r-none",
+        vertical:
+          "flex-col [&>*:not(:first-child)]:rounded-t-none [&>*:not(:first-child)]:border-t-0 [&>*:not(:last-child)]:rounded-b-none",
+      },
+    },
+    defaultVariants: {
+      orientation: "horizontal",
+    },
+  }
 )
-Drawer.displayName = "Drawer"
 
-const DrawerTrigger = DrawerPrimitive.Trigger
+function ButtonGroup({
+  className,
+  orientation,
+  ...props
+}: React.ComponentProps<"div"> & VariantProps<typeof buttonGroupVariants>) {
+  return (
+    <div
+      role="group"
+      data-slot="button-group"
+      data-orientation={orientation}
+      className={cn(buttonGroupVariants({ orientation }), className)}
+      {...props}
+    />
+  )
+}
 
-const DrawerPortal = DrawerPrimitive.Portal
+function ButtonGroupText({
+  className,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"div"> & {
+  asChild?: boolean
+}) {
+  const Comp = asChild ? Slot : "div"
 
-const DrawerClose = DrawerPrimitive.Close
-
-const DrawerOverlay = React.forwardRef<
-  React.ElementRef<typeof DrawerPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Overlay>
->(({ className, ...props }, ref) => (
-  <DrawerPrimitive.Overlay
-    ref={ref}
-    className={cn("fixed inset-0 z-50 bg-black/80", className)}
-    {...props}
-  />
-))
-DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName
-
-const DrawerContent = React.forwardRef<
-  React.ElementRef<typeof DrawerPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DrawerPortal>
-    <DrawerOverlay />
-    <DrawerPrimitive.Content
-      ref={ref}
+  return (
+    <Comp
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[10px] border bg-background",
+        "bg-muted shadow-xs flex items-center gap-2 rounded-md border px-4 text-sm font-medium [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
         className
       )}
       {...props}
-    >
-      <div className="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" />
-      {children}
-    </DrawerPrimitive.Content>
-  </DrawerPortal>
-))
-DrawerContent.displayName = "DrawerContent"
+    />
+  )
+}
 
-const DrawerHeader = ({
+function ButtonGroupSeparator({
   className,
+  orientation = "vertical",
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn("grid gap-1.5 p-4 text-center sm:text-left", className)}
-    {...props}
-  />
-)
-DrawerHeader.displayName = "DrawerHeader"
-
-const DrawerFooter = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
-  <div
-    className={cn("mt-auto flex flex-col gap-2 p-4", className)}
-    {...props}
-  />
-)
-DrawerFooter.displayName = "DrawerFooter"
-
-const DrawerTitle = React.forwardRef<
-  React.ElementRef<typeof DrawerPrimitive.Title>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Title>
->(({ className, ...props }, ref) => (
-  <DrawerPrimitive.Title
-    ref={ref}
-    className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
-      className
-    )}
-    {...props}
-  />
-))
-DrawerTitle.displayName = DrawerPrimitive.Title.displayName
-
-const DrawerDescription = React.forwardRef<
-  React.ElementRef<typeof DrawerPrimitive.Description>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Description>
->(({ className, ...props }, ref) => (
-  <DrawerPrimitive.Description
-    ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
-    {...props}
-  />
-))
-DrawerDescription.displayName = DrawerPrimitive.Description.displayName
+}: React.ComponentProps<typeof Separator>) {
+  return (
+    <Separator
+      data-slot="button-group-separator"
+      orientation={orientation}
+      className={cn(
+        "bg-input relative !m-0 self-stretch data-[orientation=vertical]:h-auto",
+        className
+      )}
+      {...props}
+    />
+  )
+}
 
 export {
-  Drawer,
-  DrawerPortal,
-  DrawerOverlay,
-  DrawerTrigger,
-  DrawerClose,
-  DrawerContent,
-  DrawerHeader,
-  DrawerFooter,
-  DrawerTitle,
-  DrawerDescription,
+  ButtonGroup,
+  ButtonGroupSeparator,
+  ButtonGroupText,
+  buttonGroupVariants,
 }

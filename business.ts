@@ -1,233 +1,137 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
-import { db, usersTable, businessesTable, teamMembersTable } from "@workspace/db";
-import { hashPassword, verifyPassword, signToken, verifyToken, isPlatformAdminEmail } from "../lib/auth";
-import { requireAuth } from "../middlewares/requireAuth";
-import { logger } from "../lib/logger";
+import { eq, desc } from "drizzle-orm";
+import { db, leadsTable, appointmentsTable, conversationsTable, automationsTable } from "@workspace/db";
+import { requireAuth, requireRole } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
+router.use(requireAuth);
+// Per the Team permission matrix: the revenue dashboard is owner/admin only
+router.use(requireRole("owner", "admin"));
 
-function setSessionCookie(res: Response, token: string) {
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-  });
+function dayKey(d: Date) {
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+function monthKey(d: Date) {
+  return d.toLocaleDateString("en-US", { month: "short" });
 }
 
-// POST /api/auth/signup
-router.post("/auth/signup", async (req: Request, res: Response) => {
-  try {
-    const { email, password, name, businessName, industry, phone } = req.body ?? {};
+// GET /api/dashboard/stats
+router.get("/dashboard/stats", async (req: Request, res: Response) => {
+  const businessId = req.auth!.businessId;
 
-    if (!email || !password || !name) {
-      res.status(400).json({ error: "Email, password, and name are required" });
-      return;
-    }
-    if (password.length < 8) {
-      res.status(400).json({ error: "Password must be at least 8 characters" });
-      return;
-    }
+  const leads = await db.select().from(leadsTable).where(eq(leadsTable.businessId, businessId));
+  const appointments = await db.select().from(appointmentsTable).where(eq(appointmentsTable.businessId, businessId));
 
-    const existing = await db.query.usersTable.findFirst({ where: eq(usersTable.email, email.toLowerCase()) });
-    if (existing) {
-      res.status(409).json({ error: "An account with that email already exists" });
-      return;
-    }
+  const convRows = await db
+    .select({ conv: conversationsTable, lead: leadsTable })
+    .from(conversationsTable)
+    .innerJoin(leadsTable, eq(conversationsTable.leadId, leadsTable.id))
+    .where(eq(leadsTable.businessId, businessId));
 
-    const passwordHash = await hashPassword(password);
-    const isPlatformAdmin = isPlatformAdminEmail(email);
+  const automations = await db.select().from(automationsTable).where(eq(automationsTable.businessId, businessId));
 
-    const [user] = await db
-      .insert(usersTable)
-      .values({ email: email.toLowerCase(), name, passwordHash, role: "owner", isEmailVerified: false, isPlatformAdmin })
-      .returning();
+  const responseTimes = leads.map((l) => l.aiResponseTime).filter((t): t is number => typeof t === "number");
+  const avgResponseTime = responseTimes.length ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : 0;
 
-    const [business] = await db
-      .insert(businessesTable)
-      .values({
-        ownerId: user.id,
-        name: businessName || "",
-        industry: industry || "",
-        phone: phone || "",
-        plan: "starter",
-        onboardingCompleted: false,
-      })
-      .returning();
+  const qualifiedLeads = leads.filter((l) => ["qualified", "booked", "won"].includes(l.status)).length;
+  const appointmentsBooked = appointments.filter((a) => a.status !== "cancelled").length;
+  const estimatedRevenueRescued = leads.filter((l) => l.status === "won").reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
 
-    const token = signToken({ userId: user.id, businessId: business.id, role: user.role, isPlatformAdmin: user.isPlatformAdmin });
-    setSessionCookie(res, token);
+  const needsAttentionConvs = convRows.filter(({ conv }) => conv.status === "needs_human");
+  const needsAttention = needsAttentionConvs.slice(0, 10).map(({ conv, lead }) => ({
+    id: lead.id,
+    name: lead.name,
+    issue: "Needs a human response",
+    type: lead.urgency === "emergency" ? "urgent" : "missed_call",
+    minutesAgo: Math.round((Date.now() - new Date(conv.updatedAt).getTime()) / 60000),
+  }));
 
-    res.status(201).json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified, isPlatformAdmin: user.isPlatformAdmin, createdAt: user.createdAt },
-      business: { id: business.id, name: business.name, industry: business.industry, phone: business.phone, plan: business.plan, onboardingCompleted: business.onboardingCompleted },
-      token,
-      redirectTo: "/onboarding",
-    });
-  } catch (err) {
-    logger.error({ err }, "signup failed");
-    res.status(500).json({ error: "Signup failed. Please try again." });
-  }
-});
+  const recentLeads = [...leads]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5)
+    .map((l) => ({ id: l.id, name: l.name, service: l.service, status: l.status, urgency: l.urgency, createdAt: l.createdAt, estimatedValue: l.estimatedValue }));
 
-// POST /api/auth/login
-router.post("/auth/login", async (req: Request, res: Response) => {
-  try {
-    const { email, password } = req.body ?? {};
-    if (!email || !password) {
-      res.status(400).json({ error: "Email and password are required" });
-      return;
-    }
+  const todayWins: string[] = [];
+  const bookedToday = leads.filter((l) => l.status === "booked" && new Date(l.updatedAt).toDateString() === new Date().toDateString());
+  bookedToday.slice(0, 3).forEach((l) => todayWins.push(`${l.name} booked ${l.service || "an appointment"}`));
+  if (responseTimes.length) todayWins.push(`AI responded to ${responseTimes.length} lead${responseTimes.length === 1 ? "" : "s"} in an average of ${avgResponseTime}s`);
+  const aiClosedConvs = convRows.filter(({ conv }) => conv.status !== "needs_human" && conv.aiHandled).length;
+  if (aiClosedConvs) todayWins.push(`${aiClosedConvs} conversation${aiClosedConvs === 1 ? "" : "s"} fully handled by AI, no human needed`);
 
-    const user = await db.query.usersTable.findFirst({ where: eq(usersTable.email, email.toLowerCase()) });
-    if (!user || !user.passwordHash || !(await verifyPassword(password, user.passwordHash))) {
-      res.status(401).json({ error: "Invalid email or password" });
-      return;
-    }
-
-    const business = user.businessId
-      ? await db.query.businessesTable.findFirst({ where: eq(businessesTable.id, user.businessId) })
-      : await db.query.businessesTable.findFirst({ where: eq(businessesTable.ownerId, user.id) });
-
-    // Re-check the env allowlist on every login so adding/removing an email
-    // from PLATFORM_ADMIN_EMAILS takes effect the next time that person logs
-    // in — no separate admin-promotion endpoint needed (there isn't one).
-    const shouldBeAdmin = isPlatformAdminEmail(user.email);
-    if (shouldBeAdmin !== user.isPlatformAdmin) {
-      await db.update(usersTable).set({ isPlatformAdmin: shouldBeAdmin }).where(eq(usersTable.id, user.id));
-      user.isPlatformAdmin = shouldBeAdmin;
-    }
-
-    const token = signToken({ userId: user.id, businessId: business?.id ?? 0, role: user.role, isPlatformAdmin: user.isPlatformAdmin });
-    setSessionCookie(res, token);
-
-    res.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified, isPlatformAdmin: user.isPlatformAdmin, createdAt: user.createdAt },
-      business: business
-        ? { id: business.id, name: business.name, industry: business.industry, plan: business.plan, onboardingCompleted: business.onboardingCompleted }
-        : null,
-      token,
-      redirectTo: user.isPlatformAdmin ? "/admin" : business?.onboardingCompleted ? "/dashboard" : "/onboarding",
-    });
-  } catch (err) {
-    logger.error({ err }, "login failed");
-    res.status(500).json({ error: "Login failed. Please try again." });
-  }
-});
-
-// POST /api/auth/logout
-router.post("/auth/logout", (_req: Request, res: Response) => {
-  res.clearCookie("token");
-  res.json({ success: true });
-});
-
-// GET /api/auth/me
-router.get("/auth/me", requireAuth, async (req: Request, res: Response) => {
-  const user = await db.query.usersTable.findFirst({ where: eq(usersTable.id, req.auth!.userId) });
-  if (!user) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
-  const business = user.businessId
-      ? await db.query.businessesTable.findFirst({ where: eq(businessesTable.id, user.businessId) })
-      : await db.query.businessesTable.findFirst({ where: eq(businessesTable.ownerId, user.id) });
+  const automationPerformance = automations.map((a) => ({
+    name: a.name,
+    triggered: a.stats?.triggered ?? 0,
+    success: a.stats?.sent ?? 0,
+    rate: a.stats?.triggered ? Math.round(((a.stats.sent ?? 0) / a.stats.triggered) * 100) : 0,
+  }));
 
   res.json({
-    user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified, isPlatformAdmin: user.isPlatformAdmin, createdAt: user.createdAt },
-    business: business ?? null,
+    metrics: {
+      leadsReceived: leads.length,
+      avgResponseTime,
+      qualifiedLeads,
+      appointmentsBooked,
+      estimatedRevenueRescued,
+      needsAttentionCount: needsAttentionConvs.length,
+    },
+    todayWins,
+    recentLeads,
+    needsAttention,
+    automationPerformance,
   });
 });
 
-// POST /api/auth/reset-password
-// Real behavior: generates + emails a reset link when RESEND_API_KEY is configured.
-// Always returns a generic success message regardless of whether the email exists,
-// to avoid leaking account existence.
-router.post("/auth/reset-password", async (req: Request, res: Response) => {
-  const { email } = req.body ?? {};
-  if (!email) {
-    res.status(400).json({ error: "Email is required" });
-    return;
-  }
+// GET /api/dashboard/charts
+router.get("/dashboard/charts", async (req: Request, res: Response) => {
+  const businessId = req.auth!.businessId;
+  const leads = await db.select().from(leadsTable).where(eq(leadsTable.businessId, businessId));
 
-  try {
-    const user = await db.query.usersTable.findFirst({ where: eq(usersTable.email, email.toLowerCase()) });
-    if (user) {
-      const token = signToken({ userId: user.id, businessId: 0, role: "reset" });
-      const { sendEmail } = await import("../lib/notifications");
-      const appUrl = process.env.PUBLIC_APP_URL || "http://localhost:5173";
-      await sendEmail({
-        to: user.email,
-        subject: "Reset your BurnCall password",
-        text: `Reset your password: ${appUrl}/reset-password?token=${token}`,
-      });
-    }
-  } catch (err) {
-    logger.error({ err }, "reset-password email failed");
-  }
-
-  res.json({ success: true, message: "If that email exists, a reset link has been sent." });
-});
-
-// POST /api/auth/accept-invite
-// Turns a team_members roster row into a real, logged-in user account.
-// Token is a short-lived JWT (role: "invite") issued when the invite was sent.
-router.post("/auth/accept-invite", async (req: Request, res: Response) => {
-  try {
-    const { token, password } = req.body ?? {};
-    if (!token || !password) {
-      res.status(400).json({ error: "token and password are required" });
-      return;
-    }
-    if (password.length < 8) {
-      res.status(400).json({ error: "Password must be at least 8 characters" });
-      return;
-    }
-
-    const payload = verifyToken(token);
-    if (!payload || payload.role !== "invite") {
-      res.status(401).json({ error: "This invite link is invalid or has expired." });
-      return;
-    }
-
-    const member = await db.query.teamMembersTable.findFirst({ where: eq(teamMembersTable.id, payload.userId) });
-    if (!member) {
-      res.status(404).json({ error: "Invite not found" });
-      return;
-    }
-    if (member.userId) {
-      res.status(409).json({ error: "This invite has already been accepted. Please log in instead." });
-      return;
-    }
-
-    const existingUser = await db.query.usersTable.findFirst({ where: eq(usersTable.email, member.email.toLowerCase()) });
-    if (existingUser) {
-      res.status(409).json({ error: "An account with that email already exists. Please log in instead." });
-      return;
-    }
-
-    const passwordHash = await hashPassword(password);
-    const [user] = await db
-      .insert(usersTable)
-      .values({ email: member.email.toLowerCase(), name: member.name, passwordHash, role: member.role, businessId: member.businessId, isEmailVerified: true })
-      .returning();
-
-    await db.update(teamMembersTable).set({ userId: user.id, status: "active", updatedAt: new Date() }).where(eq(teamMembersTable.id, member.id));
-
-    const business = await db.query.businessesTable.findFirst({ where: eq(businessesTable.id, member.businessId) });
-    const sessionToken = signToken({ userId: user.id, businessId: member.businessId, role: user.role });
-    setSessionCookie(res, sessionToken);
-
-    res.status(201).json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, isEmailVerified: user.isEmailVerified, createdAt: user.createdAt },
-      business: business ?? null,
-      token: sessionToken,
-      redirectTo: "/dashboard",
+  // Leads by day — last 7 days
+  const days: { date: string; leads: number; qualified: number; booked: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = dayKey(d);
+    const dayLeads = leads.filter((l) => dayKey(new Date(l.createdAt)) === key);
+    days.push({
+      date: key,
+      leads: dayLeads.length,
+      qualified: dayLeads.filter((l) => ["qualified", "booked", "won"].includes(l.status)).length,
+      booked: dayLeads.filter((l) => l.status === "booked" || l.status === "won").length,
     });
-  } catch (err) {
-    logger.error({ err }, "accept-invite failed");
-    res.status(500).json({ error: "Failed to accept invite. Please try again." });
   }
+
+  // Source breakdown
+  const sourceCounts = new Map<string, number>();
+  for (const l of leads) sourceCounts.set(l.source, (sourceCounts.get(l.source) ?? 0) + 1);
+  const sourceBreakdown = Array.from(sourceCounts.entries()).map(([source, count]) => ({
+    source,
+    count,
+    pct: leads.length ? Math.round((count / leads.length) * 100) : 0,
+  }));
+
+  // Funnel
+  const funnel = [
+    { stage: "Received", count: leads.length },
+    { stage: "Contacted", count: leads.filter((l) => l.lastContactedAt).length },
+    { stage: "Qualified", count: leads.filter((l) => ["qualified", "booked", "won"].includes(l.status)).length },
+    { stage: "Booked", count: leads.filter((l) => l.status === "booked" || l.status === "won").length },
+    { stage: "Won", count: leads.filter((l) => l.status === "won").length },
+  ];
+
+  // Revenue rescued by month (won leads only) — last 6 months
+  const months: { month: string; rescued: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    const key = monthKey(d);
+    const rescued = leads
+      .filter((l) => l.status === "won" && monthKey(new Date(l.updatedAt)) === key)
+      .reduce((sum, l) => sum + (l.estimatedValue || 0), 0);
+    months.push({ month: key, rescued });
+  }
+
+  res.json({ leadsByDay: days, sourceBreakdown, funnel, revenueRescued: months });
 });
 
 export default router;

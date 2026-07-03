@@ -1,28 +1,28 @@
+import * as React from "react"
+import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
+import { Check } from "lucide-react"
+
 import { cn } from "@/lib/utils"
 
-function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
-  return (
-    <kbd
-      data-slot="kbd"
-      className={cn(
-        "bg-muted text-muted-foreground pointer-events-none inline-flex h-5 w-fit min-w-5 select-none items-center justify-center gap-1 rounded-sm px-1 font-sans text-xs font-medium",
-        "[&_svg:not([class*='size-'])]:size-3",
-        "[[data-slot=tooltip-content]_&]:bg-background/20 [[data-slot=tooltip-content]_&]:text-background dark:[[data-slot=tooltip-content]_&]:bg-background/10",
-        className
-      )}
-      {...props}
-    />
-  )
-}
+const Checkbox = React.forwardRef<
+  React.ElementRef<typeof CheckboxPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
+>(({ className, ...props }, ref) => (
+  <CheckboxPrimitive.Root
+    ref={ref}
+    className={cn(
+      "grid place-content-center peer h-4 w-4 shrink-0 rounded-sm border border-primary shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+      className
+    )}
+    {...props}
+  >
+    <CheckboxPrimitive.Indicator
+      className={cn("grid place-content-center text-current")}
+    >
+      <Check className="h-4 w-4" />
+    </CheckboxPrimitive.Indicator>
+  </CheckboxPrimitive.Root>
+))
+Checkbox.displayName = CheckboxPrimitive.Root.displayName
 
-function KbdGroup({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <kbd
-      data-slot="kbd-group"
-      className={cn("inline-flex items-center gap-1", className)}
-      {...props}
-    />
-  )
-}
-
-export { Kbd, KbdGroup }
+export { Checkbox }

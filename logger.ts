@@ -1,59 +1,81 @@
-import express, { type Express } from "express";
-import cors from "cors";
-import cookieParser from "cookie-parser";
-import pinoHttp from "pino-http";
-import { logger } from "./lib/logger";
-import { WebhookHandlers } from "./webhookHandlers";
+import type { Request, Response, NextFunction } from "express";
+import { verifyToken, type AuthTokenPayload } from "../lib/auth";
 
-// Routes are imported after middleware setup
-import router from "./routes";
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      auth?: AuthTokenPayload;
+    }
+  }
+}
 
-const app: Express = express();
+/**
+ * Reads a Bearer token from the Authorization header (or `token` cookie as a
+ * fallback for browser sessions), verifies it, and attaches the decoded
+ * payload to req.auth. Responds 401 if missing/invalid.
+ */
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const header = req.headers.authorization;
+  const bearer = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+  const token = bearer || req.cookies?.token;
 
-// Pino HTTP logging (before everything so all requests are logged)
-app.use(
-  pinoHttp({
-    logger,
-    serializers: {
-      req(req) {
-        return { id: req.id, method: req.method, url: req.url?.split("?")[0] };
-      },
-      res(res) {
-        return { statusCode: res.statusCode };
-      },
-    },
-  }),
-);
+  if (!token) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
 
-// CRITICAL: Stripe webhook must be registered BEFORE express.json()
-// Stripe needs the raw Buffer body for signature verification
-app.post(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-    const signature = req.headers["stripe-signature"];
-    if (!signature) {
-      res.status(400).json({ error: "Missing stripe-signature header" });
+  const payload = verifyToken(token);
+  if (!payload) {
+    res.status(401).json({ error: "Invalid or expired session" });
+    return;
+  }
+
+  req.auth = payload;
+  next();
+}
+
+/**
+ * Enforces the role matrix shown on the Team page. Must run after
+ * requireAuth (reads req.auth.role). "owner" always passes regardless of
+ * the allowed list, since the owner can do everything by definition.
+ */
+export function requireRole(...allowed: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const role = req.auth?.role;
+    if (!role) {
+      res.status(401).json({ error: "Not authenticated" });
       return;
     }
-    const sig = Array.isArray(signature) ? signature[0] : signature;
-    try {
-      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
-      res.status(200).json({ received: true });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Webhook error";
-      logger.error({ err }, "Stripe webhook processing failed");
-      res.status(400).json({ error: msg });
+    if (role === "owner" || allowed.includes(role)) {
+      next();
+      return;
     }
-  },
-);
+    res.status(403).json({ error: `This action requires one of these roles: ${allowed.join(", ")}. Your role: ${role}.` });
+  };
+}
 
-// Standard middleware (after webhook route)
-app.use(cors({ origin: process.env.PUBLIC_APP_URL || true, credentials: true }));
-app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+/**
+ * Restricts to real cross-tenant platform admins only (see
+ * PLATFORM_ADMIN_EMAILS / lib/auth.ts syncPlatformAdminStatus). This is
+ * intentionally separate from requireRole's per-business owner/admin roles —
+ * a business owner is NOT a platform admin by default.
+ */
+export function requirePlatformAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.auth?.isPlatformAdmin) {
+    res.status(403).json({ error: "Platform admin access required" });
+    return;
+  }
+  next();
+}
 
-app.use("/api", router);
-
-export default app;
+export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+  const header = req.headers.authorization;
+  const bearer = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+  const token = bearer || req.cookies?.token;
+  if (token) {
+    const payload = verifyToken(token);
+    if (payload) req.auth = payload;
+  }
+  next();
+}

@@ -1,37 +1,33 @@
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
+import { useToast } from "@/hooks/use-toast"
+import {
+  Toast,
+  ToastClose,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "@/components/ui/toast"
 
-import { cn } from "@/lib/utils"
+export function Toaster() {
+  const { toasts } = useToast()
 
-const badgeVariants = cva(
-  "whitespace-nowrap inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" +
-  " hover-elevate ",
-  {
-    variants: {
-      variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground shadow-xs",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground",
-        destructive:
-          "border-transparent bg-destructive text-destructive-foreground shadow-xs",
-        outline: "text-foreground border [border-color:var(--badge-outline)]",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  }
-)
-
-export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {}
-
-function Badge({ className, variant, ...props }: BadgeProps) {
   return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+    <ToastProvider>
+      {toasts.map(function ({ id, title, description, action, ...props }) {
+        return (
+          <Toast key={id} {...props}>
+            <div className="grid gap-1">
+              {title && <ToastTitle>{title}</ToastTitle>}
+              {description && (
+                <ToastDescription>{description}</ToastDescription>
+              )}
+            </div>
+            {action}
+            <ToastClose />
+          </Toast>
+        )
+      })}
+      <ToastViewport />
+    </ToastProvider>
   )
 }
-
-export { Badge, badgeVariants }
